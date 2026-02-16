@@ -160,7 +160,7 @@ def create_service(service: ServiceRequest):
     service_dict = service.model_dump()
     service_dict["id"] = generate_id("SR")
     service_requests_collection.insert_one(service_dict)
-    del service_dict["_id"] if "_id" in service_dict else None
+    service_dict.pop("_id", None)
     return service_dict
 
 @app.delete("/api/services/{service_id}")
