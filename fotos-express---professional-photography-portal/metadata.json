@@ -1,0 +1,8 @@
+
+{
+  "name": "Fotos Express - Professional Photography Portal",
+  "description": "A high-end, dark-themed photography portal featuring a professional portfolio, private client galleries with secure access, and a comprehensive administration dashboard.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
