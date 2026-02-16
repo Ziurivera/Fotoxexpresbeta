@@ -181,7 +181,7 @@ def create_staff_application(staff: StaffApplication):
     staff_dict = staff.model_dump()
     staff_dict["id"] = generate_id("P")
     staff_applications_collection.insert_one(staff_dict)
-    del staff_dict["_id"] if "_id" in staff_dict else None
+    staff_dict.pop("_id", None)
     return staff_dict
 
 @app.put("/api/staff/{staff_id}/status")
