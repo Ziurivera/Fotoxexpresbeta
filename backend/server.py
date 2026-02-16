@@ -112,7 +112,7 @@ def create_client(client: ClientLead):
     client_dict["id"] = generate_id("L")
     client_dict["fechaRegistro"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     clients_collection.insert_one(client_dict)
-    del client_dict["_id"] if "_id" in client_dict else None
+    client_dict.pop("_id", None)
     return client_dict
 
 @app.put("/api/clients/{client_id}")
