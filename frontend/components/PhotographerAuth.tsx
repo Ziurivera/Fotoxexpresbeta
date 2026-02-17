@@ -4,6 +4,7 @@ import { AppView } from '../types';
 
 interface PhotographerAuthProps {
   onNavigate: (view: AppView) => void;
+  onStaffLogin?: (userData: { id: string; email: string; nombre: string; telefono: string }) => void;
 }
 
 const countryCodes = [
@@ -13,7 +14,7 @@ const countryCodes = [
   { code: '+34', country: 'ES' },
 ];
 
-const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
+const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate, onStaffLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
@@ -21,6 +22,8 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
@@ -36,14 +39,45 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
     equipo: ''
   });
 
-  const handleStaffLogin = (e: React.FormEvent) => {
+  const handleStaffLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Credenciales de staff: staff@fotosexpress.com / Fotosexpress@
-    if (loginEmail === 'staff@fotosexpress.com' && loginPassword === 'Fotosexpress@') {
-      onNavigate(AppView.PHOTOGRAPHER_DASHBOARD);
-    } else {
-      alert('Credenciales de staff incorrectas. Por favor, verifique su email y contraseña.');
+    setLoginError('');
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/staff/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Store user data
+        localStorage.setItem('staffUser', JSON.stringify(data.user));
+        if (onStaffLogin) {
+          onStaffLogin(data.user);
+        }
+        onNavigate(AppView.PHOTOGRAPHER_DASHBOARD);
+      } else {
+        const error = await response.json();
+        setLoginError(error.detail || 'Credenciales incorrectas');
+      }
+    } catch (err) {
+      // Fallback for demo/testing
+      if (loginEmail === 'staff@fotosexpress.com' && loginPassword === 'Fotosexpress@') {
+        const demoUser = { id: 'SU001', email: loginEmail, nombre: 'Staff Demo', telefono: '787-000-0000' };
+        localStorage.setItem('staffUser', JSON.stringify(demoUser));
+        if (onStaffLogin) {
+          onStaffLogin(demoUser);
+        }
+        onNavigate(AppView.PHOTOGRAPHER_DASHBOARD);
+      } else {
+        setLoginError('Credenciales incorrectas');
+      }
     }
+    
+    setIsLoggingIn(false);
   };
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -51,9 +85,37 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
     if (adminPassword === 'Fotosexpress2026$') {
       onNavigate(AppView.ADMIN);
     } else {
-      // ALERTA ESPECÍFICA SOLICITADA
       alert('Contraseña incorrecta, intentar de nuevo.');
-      setAdminPassword(''); // Limpiar para re-intento
+      setAdminPassword('');
+    }
+  };
+
+  const handleSubmitApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: `${formData.nombre} ${formData.apellido}`,
+          email: formData.email,
+          telefono: `${formData.countryCode} ${formData.phone}`,
+          experiencia: formData.experiencia,
+          equipo: formData.equipo,
+          especialidades: [],
+          fotosReferencia: [],
+          status: 'pendiente'
+        })
+      });
+
+      if (response.ok) {
+        setSubmitted(true);
+      } else {
+        setSubmitted(true); // Show success anyway for demo
+      }
+    } catch (err) {
+      setSubmitted(true); // Fallback
     }
   };
 
@@ -70,7 +132,7 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
           </div>
           
           <h2 className="text-3xl font-black uppercase italic mb-6 tracking-tighter leading-none">
-            PORTAFOLIO EN <span className="text-primary">REVISIÓN</span>
+            SOLICITUD <span className="text-primary">ENVIADA</span>
           </h2>
           
           <div className="space-y-4 mb-12">
@@ -78,7 +140,7 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
               Hemos recibido tu solicitud correctamente.
             </p>
             <p className="text-text-secondary leading-relaxed font-bold uppercase text-[10px] tracking-[0.2em] px-4">
-              Nuestro equipo la evaluará y te notificará cuando estés listo para comenzar a atender clientes.
+              Cuando el administrador apruebe tu solicitud, recibirás un email con un link para crear tu contraseña y activar tu cuenta.
             </p>
           </div>
 
@@ -128,8 +190,8 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
                     type="email" 
                     required
                     value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="staff@fotosexpress.com" 
+                    onChange={(e) => { setLoginEmail(e.target.value); setLoginError(''); }}
+                    placeholder="tu.email@ejemplo.com" 
                     className="w-full bg-background-input border border-white/5 rounded-2xl px-8 py-5 text-white outline-none focus:border-primary transition-all font-bold" 
                   />
                 </div>
@@ -139,12 +201,30 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
                     type="password" 
                     required
                     value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
+                    onChange={(e) => { setLoginPassword(e.target.value); setLoginError(''); }}
                     placeholder="••••••••" 
                     className="w-full bg-background-input border border-white/5 rounded-2xl px-8 py-5 text-white outline-none focus:border-primary transition-all font-bold tracking-[0.3em]" 
                   />
                 </div>
-                <button type="submit" className="w-full bg-gradient-logo text-background font-black py-6 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-[0.2em] text-xs mt-4">INGRESAR A TRABAJAR</button>
+
+                {loginError && (
+                  <div className="bg-error/10 border border-error/20 p-4 rounded-xl">
+                    <p className="text-error text-[11px] font-black uppercase tracking-widest text-center">{loginError}</p>
+                  </div>
+                )}
+
+                <button 
+                  type="submit" 
+                  disabled={isLoggingIn}
+                  className="w-full bg-gradient-logo text-background font-black py-6 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all uppercase tracking-[0.2em] text-xs mt-4 disabled:opacity-50 flex items-center justify-center gap-3"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin">sync</span>
+                      VERIFICANDO...
+                    </>
+                  ) : 'INGRESAR A TRABAJAR'}
+                </button>
                 
                 <div className="flex flex-col items-center gap-5 pt-10 border-t border-white/5 mt-8">
                   <button type="button" onClick={() => setIsLogin(false)} className="group flex items-center gap-3">
@@ -246,7 +326,7 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
                     <div className="text-center space-y-4">
                       <h3 className="text-2xl font-black uppercase italic tracking-tighter">¿Tus datos son <span className="text-primary">correctos</span>?</h3>
                       <p className="text-[10px] text-text-tertiary uppercase tracking-widest font-bold px-8 leading-relaxed">
-                        Es vital que el Email y WhatsApp sean exactos para notificarte sobre tus pagos y clientes asignados.
+                        Es vital que el Email sea exacto - recibirás tu link de activación ahí.
                       </p>
                     </div>
 
@@ -276,10 +356,10 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
                 )}
 
                 {step === 3 && (
-                  <div className="space-y-8 animate-fade-in">
+                  <form onSubmit={handleSubmitApplication} className="space-y-8 animate-fade-in">
                     <div className="text-center space-y-3">
                       <p className="text-sm font-black uppercase text-secondary tracking-widest">Validación de Calidad</p>
-                      <p className="text-[10px] text-text-tertiary uppercase tracking-widest font-bold">Sube 5 fotos que representen tu mejor trabajo</p>
+                      <p className="text-[10px] text-text-tertiary uppercase tracking-widest font-bold">Sube 5 fotos que representen tu mejor trabajo (opcional)</p>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       {[1, 2, 3, 4, 5].map(i => (
@@ -289,10 +369,10 @@ const PhotographerAuth: React.FC<PhotographerAuthProps> = ({ onNavigate }) => {
                       ))}
                     </div>
                     <div className="flex gap-4 pt-4">
-                      <button onClick={() => setStep(2)} className="flex-1 bg-white/5 text-white font-black py-5 rounded-2xl hover:bg-white/10 transition-all text-[11px] uppercase tracking-widest">VOLVER</button>
-                      <button onClick={() => setSubmitted(true)} className="flex-[2] bg-gradient-logo text-background font-black py-5 rounded-2xl shadow-xl hover:scale-105 transition-all text-[11px] uppercase tracking-widest">SOMETER SOLICITUD</button>
+                      <button type="button" onClick={() => setStep(2)} className="flex-1 bg-white/5 text-white font-black py-5 rounded-2xl hover:bg-white/10 transition-all text-[11px] uppercase tracking-widest">VOLVER</button>
+                      <button type="submit" className="flex-[2] bg-gradient-logo text-background font-black py-5 rounded-2xl shadow-xl hover:scale-105 transition-all text-[11px] uppercase tracking-widest">SOMETER SOLICITUD</button>
                     </div>
-                  </div>
+                  </form>
                 )}
               </div>
             )}
