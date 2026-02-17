@@ -7,7 +7,7 @@ from datetime import datetime
 
 class FotosExpressAPITester:
     def __init__(self):
-        self.base_url = "https://github-realizer.preview.emergentagent.com"
+        self.base_url = "https://photo-portal-13.preview.emergentagent.com"
         self.token = None
         self.tests_run = 0
         self.tests_passed = 0

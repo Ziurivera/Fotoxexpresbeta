@@ -34,7 +34,7 @@ app.add_middleware(
 # MongoDB Connection
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "fotosexpress")
-APP_URL = os.environ.get("APP_URL", "https://686b811e-993d-4293-bfa6-b6ba1d222226.preview.emergentagent.com")
+APP_URL = os.environ.get("APP_URL", "https://photo-portal-13.preview.emergentagent.com")
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
 
