@@ -1,66 +1,173 @@
-
-import React, { useState } from 'react';
-import { AppView, PhotographerProfile, ServiceRequest } from '../types';
-import { ExtendedClientLead } from '../App';
+import React, { useState, useEffect } from 'react';
+import { AppView, Zone, Business, Activity, AmbulantClient, ActivityClient, ServiceRequest, StaffApplication, StaffUser } from '../types';
 
 interface AdminDashboardProps {
   onNavigate: (view: AppView) => void;
-  clientLeads: ExtendedClientLead[];
-  serviceRequests: ServiceRequest[];
-  staffApplications: PhotographerProfile[];
-  onDeleteLead: (id: string) => void;
-  onDeleteService: (id: string) => void;
-  onStaffAction: (id: string, action: 'aprobado' | 'rechazado') => void;
 }
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 interface ApprovalModalData {
   id: string;
   nombre: string;
   email: string;
   activationLink?: string;
-  emailStatus?: {
-    status: string;
-    message?: string;
-    email_id?: string;
-  };
+  emailStatus?: { status: string; message?: string };
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  onNavigate, 
-  clientLeads, 
-  serviceRequests, 
-  staffApplications,
-  onDeleteLead,
-  onDeleteService,
-  onStaffAction
-}) => {
-  const [activeTab, setActiveTab] = useState<'leads' | 'services' | 'staff'>('leads');
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
+  const [activeTab, setActiveTab] = useState<'zones' | 'businesses' | 'ambulant' | 'activity' | 'services' | 'staff'>('zones');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [viewingGallery, setViewingGallery] = useState<string[] | null>(null);
+  
+  // Data
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [ambulantClients, setAmbulantClients] = useState<AmbulantClient[]>([]);
+  const [activityClients, setActivityClients] = useState<ActivityClient[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [staffApplications, setStaffApplications] = useState<StaffApplication[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
+  
+  // Modals
+  const [showZoneModal, setShowZoneModal] = useState(false);
+  const [showBusinessModal, setShowBusinessModal] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState<{type: 'zone' | 'activity'; id: string; name: string} | null>(null);
   const [approvalModal, setApprovalModal] = useState<ApprovalModalData | null>(null);
+  
+  // Forms
+  const [newZone, setNewZone] = useState({ nombre: '', descripcion: '' });
+  const [newBusiness, setNewBusiness] = useState({ nombre: '', direccion: '', telefono: '' });
+  const [newActivity, setNewActivity] = useState({ nombre: '', negocioId: '', descripcion: '' });
+  const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
+  
   const [isApproving, setIsApproving] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const handleWhatsApp = (phone: string, name: string, type: 'delivery' | 'service') => {
-    let message = '';
-    if (type === 'delivery') {
-      message = `¡Hola ${name}! Tus fotos ya están listas en Fotos Express. Puedes descargarlas ingresando tu número de teléfono en nuestro portal. Muchas gracias, puedes seguirnos en Instagram: https://www.instagram.com/fotosexpresspr?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==`;
-    } else {
-      message = `¡Hola ${name}! Recibimos tu solicitud de servicio en Fotos Express. ¿Podemos hablar sobre los detalles? 📸`;
+  // Load all data
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [zRes, bRes, aRes, acRes, ecRes, sRes, stRes, suRes] = await Promise.all([
+        fetch(`${API_URL}/api/zones`),
+        fetch(`${API_URL}/api/businesses`),
+        fetch(`${API_URL}/api/activities`),
+        fetch(`${API_URL}/api/ambulant-clients`),
+        fetch(`${API_URL}/api/activity-clients`),
+        fetch(`${API_URL}/api/services`),
+        fetch(`${API_URL}/api/staff`),
+        fetch(`${API_URL}/api/staff/users`)
+      ]);
+      if (zRes.ok) setZones(await zRes.json());
+      if (bRes.ok) setBusinesses(await bRes.json());
+      if (aRes.ok) setActivities(await aRes.json());
+      if (acRes.ok) setAmbulantClients(await acRes.json());
+      if (ecRes.ok) setActivityClients(await ecRes.json());
+      if (sRes.ok) setServiceRequests(await sRes.json());
+      if (stRes.ok) setStaffApplications((await stRes.json()).filter((s: StaffApplication) => s.status === 'pendiente'));
+      if (suRes.ok) setStaffUsers(await suRes.json());
+    } catch (err) {
+      console.error('Error loading data:', err);
     }
-    window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const handleApproveStaff = async (app: PhotographerProfile) => {
+  // Zone CRUD
+  const handleCreateZone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/api/zones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newZone, activa: true, fotografosAsignados: [] })
+      });
+      if (res.ok) {
+        loadData();
+        setShowZoneModal(false);
+        setNewZone({ nombre: '', descripcion: '' });
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteZone = async (id: string) => {
+    if (!confirm('¿Eliminar esta zona?')) return;
+    await fetch(`${API_URL}/api/zones/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  // Business CRUD
+  const handleCreateBusiness = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/api/businesses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newBusiness, activo: true })
+      });
+      if (res.ok) {
+        loadData();
+        setShowBusinessModal(false);
+        setNewBusiness({ nombre: '', direccion: '', telefono: '' });
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteBusiness = async (id: string) => {
+    if (!confirm('¿Eliminar este negocio y sus actividades?')) return;
+    await fetch(`${API_URL}/api/businesses/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  // Activity CRUD
+  const handleCreateActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/api/activities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newActivity, activa: true, fotografosAsignados: [] })
+      });
+      if (res.ok) {
+        loadData();
+        setShowActivityModal(false);
+        setNewActivity({ nombre: '', negocioId: '', descripcion: '' });
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+    if (!confirm('¿Eliminar esta actividad?')) return;
+    await fetch(`${API_URL}/api/activities/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  // Staff Assignment
+  const handleAssignStaff = async () => {
+    if (!showAssignModal) return;
+    const endpoint = showAssignModal.type === 'zone' 
+      ? `/api/zones/${showAssignModal.id}/staff`
+      : `/api/activities/${showAssignModal.id}/staff`;
+    
+    await fetch(`${API_URL}${endpoint}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffIds: selectedStaff })
+    });
+    loadData();
+    setShowAssignModal(null);
+    setSelectedStaff([]);
+  };
+
+  // Staff Approval
+  const handleApproveStaff = async (app: StaffApplication) => {
     setIsApproving(true);
     try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/staff/approve/${app.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch(`${API_URL}/api/staff/approve/${app.id}`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
         setApprovalModal({
           id: app.id,
           nombre: data.nombre,
@@ -68,25 +175,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           activationLink: data.activationLink,
           emailStatus: data.emailStatus
         });
-        onStaffAction(app.id, 'aprobado');
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.detail}`);
+        loadData();
       }
-    } catch (err) {
-      // Fallback: Show simulated link if backend is not connected
-      const simulatedToken = Math.random().toString(36).substring(2, 15);
-      const baseUrl = window.location.origin;
-      setApprovalModal({
-        id: app.id,
-        nombre: app.nombre,
-        email: app.email,
-        activationLink: `${baseUrl}/activar-cuenta?token=${simulatedToken}`,
-        emailStatus: { status: 'skipped', message: 'Backend no disponible' }
-      });
-      onStaffAction(app.id, 'aprobado');
-    }
+    } catch (err) { console.error(err); }
     setIsApproving(false);
+  };
+
+  const handleRejectStaff = async (id: string) => {
+    await fetch(`${API_URL}/api/staff/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  // Delete clients
+  const handleDeleteAmbulant = async (id: string) => {
+    await fetch(`${API_URL}/api/ambulant-clients/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+    await fetch(`${API_URL}/api/activity-clients/${id}`, { method: 'DELETE' });
+    loadData();
+  };
+
+  const handleDeleteService = async (id: string) => {
+    await fetch(`${API_URL}/api/services/${id}`, { method: 'DELETE' });
+    loadData();
   };
 
   const copyToClipboard = (text: string) => {
@@ -95,29 +208,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
+  const handleWhatsApp = (phone: string, name: string) => {
+    const msg = `¡Hola ${name}! Tus fotos de Fotos Express están listas. 📸`;
+    window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
   const menuItems = [
-    { id: 'leads', label: 'Entregas HD', icon: 'auto_awesome_motion', count: clientLeads.length },
-    { id: 'services', label: 'Servicios', icon: 'calendar_month', count: serviceRequests.length },
-    { id: 'staff', label: 'Candidatos', icon: 'badge', count: staffApplications.length },
+    { id: 'zones', label: 'Zonas', icon: 'map', count: zones.length },
+    { id: 'businesses', label: 'Negocios', icon: 'store', count: businesses.length },
+    { id: 'ambulant', label: 'Ambulantes', icon: 'directions_walk', count: ambulantClients.length },
+    { id: 'activity', label: 'Actividades', icon: 'celebration', count: activityClients.length },
+    { id: 'services', label: 'Cotizaciones', icon: 'request_quote', count: serviceRequests.length },
+    { id: 'staff', label: 'Reclutamiento', icon: 'badge', count: staffApplications.length },
   ];
 
   return (
     <div className="flex min-h-screen bg-background text-text-primary relative font-sans">
       {/* Mobile Backdrop */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[85] lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-      )}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/80 z-[85] lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-      {/* Sidebar Unificado */}
-      <aside className={`
-        fixed lg:sticky top-0 left-0 z-[90] h-screen bg-background-card border-r border-white/5 
-        transition-transform duration-500 ease-in-out w-72 lg:translate-x-0
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      {/* Sidebar */}
+      <aside className={`fixed lg:sticky top-0 left-0 z-[90] h-screen bg-background-card border-r border-white/5 transition-transform duration-300 w-72 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 flex flex-col h-full">
           <div className="flex items-center justify-between mb-12">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(AppView.LANDING)}>
-              <div className="bg-primary p-2 rounded-xl shadow-lg shadow-primary/20">
+              <div className="bg-primary p-2 rounded-xl">
                 <span className="material-symbols-outlined text-background font-black">shield_person</span>
               </div>
               <div>
@@ -131,108 +246,222 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           <nav className="flex-1 space-y-2">
-            {menuItems.map((item) => (
+            {menuItems.map(item => (
               <button 
                 key={item.id}
-                onClick={() => { setActiveTab(item.id as any); setIsSidebarOpen(false); }} 
-                className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all group ${activeTab === item.id ? 'bg-primary text-background' : 'text-text-tertiary hover:text-white hover:bg-white/5'}`}
+                onClick={() => { setActiveTab(item.id as any); setIsSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl font-black text-[10px] uppercase transition-all ${activeTab === item.id ? 'bg-primary text-background' : 'text-text-tertiary hover:bg-white/5'}`}
               >
                 <div className="flex items-center gap-4">
                   <span className="material-symbols-outlined text-xl">{item.icon}</span>
                   {item.label}
                 </div>
-                {item.count > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[8px] ${activeTab === item.id ? 'bg-background text-primary' : 'bg-primary/10 text-primary'}`}>
-                    {item.count}
-                  </span>
-                )}
+                <span className={`px-2 py-0.5 rounded-full text-[8px] ${activeTab === item.id ? 'bg-background text-primary' : 'bg-primary/10 text-primary'}`}>
+                  {item.count}
+                </span>
               </button>
             ))}
           </nav>
 
           <div className="pt-8 border-t border-white/5 space-y-4">
-             <div className="flex items-center gap-3 px-4">
-                <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-success text-sm">online_prediction</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[8px] font-black text-text-tertiary uppercase">Admin Status</span>
-                  <span className="text-[10px] font-bold text-success uppercase">Conectado</span>
-                </div>
-             </div>
-             <button onClick={() => onNavigate(AppView.LANDING)} className="w-full flex items-center gap-3 text-text-tertiary hover:text-error transition-colors font-black uppercase text-[10px] px-4 py-2">
-                <span className="material-symbols-outlined text-lg">power_settings_new</span> Cerrar Sesión
-             </button>
+            <div className="flex items-center gap-3 px-4">
+              <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
+                <span className="material-symbols-outlined text-success text-sm">online_prediction</span>
+              </div>
+              <span className="text-[10px] font-bold text-success uppercase">Admin Conectado</span>
+            </div>
+            <button onClick={() => onNavigate(AppView.LANDING)} className="w-full flex items-center gap-3 text-text-tertiary hover:text-error transition-colors font-black uppercase text-[10px] px-4 py-2">
+              <span className="material-symbols-outlined text-lg">power_settings_new</span> Cerrar Sesión
+            </button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content View */}
+      {/* Main Content */}
       <main className="flex-1 min-w-0 flex flex-col">
-        {/* Top Header Mobile */}
         <div className="lg:hidden sticky top-0 w-full bg-background/80 backdrop-blur-xl border-b border-white/5 z-[80] px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-             <span className="material-symbols-outlined text-primary">admin_panel_settings</span>
-             <span className="font-black italic uppercase text-xs tracking-widest">{activeTab.replace('leads', 'Entregas').replace('services', 'Servicios').replace('staff', 'Candidatos')}</span>
-          </div>
-          <button onClick={() => setIsSidebarOpen(true)} className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-xl border border-white/10">
+          <span className="font-black italic uppercase text-xs tracking-widest">Panel Admin</span>
+          <button onClick={() => setIsSidebarOpen(true)} className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-xl">
             <span className="material-symbols-outlined">menu</span>
           </button>
         </div>
 
         <div className="p-6 md:p-10 lg:p-16 max-w-[1400px] mx-auto w-full">
           
-          {/* SECTION: ENTREGAS HD */}
-          {activeTab === 'leads' && (
+          {/* ZONES TAB */}
+          {activeTab === 'zones' && (
             <div className="animate-fade-in space-y-8">
-              <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+              <header className="flex justify-between items-end">
                 <div>
-                  <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter leading-none mb-3">CONTROL DE <span className="text-primary">ENTREGAS</span></h2>
-                  <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Gestión de galerías y notificaciones al cliente.</p>
+                  <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">ZONAS <span className="text-primary">AMBULANTES</span></h2>
+                  <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Áreas donde trabajan fotógrafos ambulantes</p>
                 </div>
-                <div className="bg-white/5 px-6 py-4 rounded-2xl border border-white/10 flex items-center gap-4">
-                  <span className="text-[9px] font-black text-text-tertiary uppercase">Total Listos: <span className="text-success text-lg ml-2 italic">{clientLeads.filter(l => l.status === 'atendido').length}</span></span>
+                <button onClick={() => setShowZoneModal(true)} className="bg-primary text-background font-black px-6 py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
+                  <span className="material-symbols-outlined">add</span> Nueva Zona
+                </button>
+              </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {zones.map(zone => (
+                  <div key={zone.id} className="bg-background-card border border-white/5 p-8 rounded-[2rem] group hover:border-primary/30 transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="text-xl font-black uppercase italic">{zone.nombre}</h3>
+                        <p className="text-text-tertiary text-[10px] uppercase tracking-widest">{zone.descripcion}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${zone.activa ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
+                        {zone.activa ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-2">Fotógrafos Asignados ({zone.fotografosAsignados.length})</p>
+                      <div className="flex flex-wrap gap-1">
+                        {zone.fotografosAsignados.map(sid => {
+                          const staff = staffUsers.find(s => s.id === sid);
+                          return staff ? (
+                            <span key={sid} className="bg-primary/10 text-primary text-[9px] font-bold px-2 py-1 rounded">{staff.nombre}</span>
+                          ) : null;
+                        })}
+                        {zone.fotografosAsignados.length === 0 && <span className="text-text-tertiary text-[10px]">Sin asignar</span>}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button onClick={() => { setShowAssignModal({ type: 'zone', id: zone.id, name: zone.nombre }); setSelectedStaff(zone.fotografosAsignados); }} className="flex-1 bg-white/5 text-white font-black py-3 rounded-xl text-[9px] uppercase hover:bg-primary hover:text-background transition-all">
+                        Asignar Staff
+                      </button>
+                      <button onClick={() => handleDeleteZone(zone.id)} className="w-12 bg-error/10 text-error rounded-xl hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* BUSINESSES TAB */}
+          {activeTab === 'businesses' && (
+            <div className="animate-fade-in space-y-8">
+              <header className="flex justify-between items-end">
+                <div>
+                  <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">NEGOCIOS Y <span className="text-secondary">ACTIVIDADES</span></h2>
+                  <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Lugares y eventos con servicio de fotografía</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowBusinessModal(true)} className="bg-white text-background font-black px-6 py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
+                    <span className="material-symbols-outlined">store</span> Nuevo Negocio
+                  </button>
+                  <button onClick={() => setShowActivityModal(true)} className="bg-secondary text-white font-black px-6 py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
+                    <span className="material-symbols-outlined">celebration</span> Nueva Actividad
+                  </button>
                 </div>
               </header>
 
-              <div className="bg-background-card border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl overflow-x-auto">
-                <table className="w-full text-left min-w-[800px]">
+              {businesses.map(business => (
+                <div key={business.id} className="bg-background-card border border-white/5 rounded-[2rem] overflow-hidden">
+                  <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black uppercase italic">{business.nombre}</h3>
+                      <p className="text-text-tertiary text-[10px] uppercase tracking-widest">{business.direccion}</p>
+                    </div>
+                    <button onClick={() => handleDeleteBusiness(business.id)} className="w-10 h-10 bg-error/10 text-error rounded-xl hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                      <span className="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                  
+                  <div className="p-6">
+                    <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-4">Actividades de este negocio</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {activities.filter(a => a.negocioId === business.id).map(activity => (
+                        <div key={activity.id} className="bg-background-input p-4 rounded-xl border border-white/5">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="text-lg font-black uppercase italic">{activity.nombre}</h4>
+                              <p className="text-text-tertiary text-[9px]">{activity.descripcion}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black ${activity.activa ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
+                              {activity.activa ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </div>
+                          
+                          <div className="mb-3">
+                            <p className="text-[8px] font-black text-text-tertiary uppercase mb-1">Staff ({activity.fotografosAsignados.length})</p>
+                            <div className="flex flex-wrap gap-1">
+                              {activity.fotografosAsignados.map(sid => {
+                                const staff = staffUsers.find(s => s.id === sid);
+                                return staff ? <span key={sid} className="bg-secondary/10 text-secondary text-[8px] font-bold px-2 py-0.5 rounded">{staff.nombre}</span> : null;
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button onClick={() => { setShowAssignModal({ type: 'activity', id: activity.id, name: activity.nombre }); setSelectedStaff(activity.fotografosAsignados); }} className="flex-1 bg-secondary/20 text-secondary font-black py-2 rounded text-[8px] uppercase hover:bg-secondary hover:text-white transition-all">
+                              Asignar
+                            </button>
+                            <button onClick={() => handleDeleteActivity(activity.id)} className="w-8 bg-error/10 text-error rounded hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* AMBULANT CLIENTS TAB */}
+          {activeTab === 'ambulant' && (
+            <div className="animate-fade-in space-y-8">
+              <header>
+                <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">CLIENTES <span className="text-primary">AMBULANTES</span></h2>
+                <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Personas fotografiadas en zonas públicas</p>
+              </header>
+
+              <div className="bg-background-card border border-white/10 rounded-[2.5rem] overflow-x-auto">
+                <table className="w-full text-left min-w-[900px]">
                   <thead className="bg-white/[0.02] text-[9px] font-black text-text-tertiary uppercase tracking-widest border-b border-white/5">
                     <tr>
-                      <th className="px-8 py-6">Estado</th>
-                      <th className="px-8 py-6">Cliente</th>
-                      <th className="px-8 py-6">Teléfono</th>
-                      <th className="px-8 py-6">Staff Asignado</th>
-                      <th className="px-8 py-6 text-center">Acciones</th>
+                      <th className="px-6 py-5">Foto</th>
+                      <th className="px-6 py-5">Nombre</th>
+                      <th className="px-6 py-5">Teléfono</th>
+                      <th className="px-6 py-5">Instagram</th>
+                      <th className="px-6 py-5">Zona</th>
+                      <th className="px-6 py-5">Publicidad</th>
+                      <th className="px-6 py-5">Estado</th>
+                      <th className="px-6 py-5">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {clientLeads.map(lead => (
-                      <tr key={lead.id} className="hover:bg-white/[0.01] transition-colors group">
-                        <td className="px-8 py-6 whitespace-nowrap">
-                          <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${lead.status === 'atendido' ? 'bg-success/10 text-success border border-success/20' : 'bg-warning/10 text-warning border border-warning/20 animate-pulse'}`}>
-                            {lead.status === 'atendido' ? 'LISTO HD' : 'EN ESPERA'}
+                    {ambulantClients.map(client => (
+                      <tr key={client.id} className="hover:bg-white/[0.01]">
+                        <td className="px-6 py-4">
+                          <img src={client.fotoReferencia || 'https://picsum.photos/50'} alt="Ref" className="w-12 h-12 rounded-lg object-cover" />
+                        </td>
+                        <td className="px-6 py-4 font-black uppercase">{client.nombre}</td>
+                        <td className="px-6 py-4 text-xs font-bold">{client.telefono}</td>
+                        <td className="px-6 py-4 text-xs text-primary">{client.instagram || '-'}</td>
+                        <td className="px-6 py-4 text-xs">{client.zonaNombre}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-[8px] font-black ${client.aceptaPublicidad ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
+                            {client.aceptaPublicidad ? 'Sí' : 'No'}
                           </span>
                         </td>
-                        <td className="px-8 py-6">
-                          <p className="text-sm font-black uppercase italic text-white">{lead.nombre}</p>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full text-[8px] font-black ${client.status === 'atendido' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
+                            {client.status === 'atendido' ? 'Listo' : 'Pendiente'}
+                          </span>
                         </td>
-                        <td className="px-8 py-6">
-                          <p className="text-xs font-bold text-text-secondary tracking-widest">{lead.telefono}</p>
-                        </td>
-                        <td className="px-8 py-6 whitespace-nowrap">
-                          <p className="text-[10px] font-black text-text-tertiary uppercase truncate max-w-[150px]">{lead.atendidoPorNombre || 'SIN ASIGNAR'}</p>
-                        </td>
-                        <td className="px-8 py-6">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => lead.fotosSubidas && setViewingGallery(lead.fotosSubidas)} disabled={!lead.fotosSubidas} className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-text-tertiary hover:text-primary disabled:opacity-10 transition-all active:scale-90">
-                              <span className="material-symbols-outlined text-lg">visibility</span>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2">
+                            <button onClick={() => handleWhatsApp(client.telefono, client.nombre)} className="w-8 h-8 rounded bg-success/10 text-success hover:bg-success hover:text-white transition-all flex items-center justify-center">
+                              <span className="material-symbols-outlined text-sm">chat</span>
                             </button>
-                            <button onClick={() => handleWhatsApp(lead.telefono, lead.nombre, 'delivery')} className="w-9 h-9 rounded-xl bg-success/10 flex items-center justify-center text-success hover:bg-success hover:text-background transition-all active:scale-90">
-                              <span className="material-symbols-outlined text-lg">chat</span>
-                            </button>
-                            <button onClick={() => onDeleteLead(lead.id)} className="w-9 h-9 rounded-xl bg-error/10 flex items-center justify-center text-error hover:bg-error hover:text-white transition-all active:scale-90">
-                              <span className="material-symbols-outlined text-lg">delete_sweep</span>
+                            <button onClick={() => handleDeleteAmbulant(client.id)} className="w-8 h-8 rounded bg-error/10 text-error hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                              <span className="material-symbols-outlined text-sm">delete</span>
                             </button>
                           </div>
                         </td>
@@ -244,229 +473,251 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
-          {/* SECTION: SERVICIOS / COTIZACIONES */}
-          {activeTab === 'services' && (
+          {/* ACTIVITY CLIENTS TAB */}
+          {activeTab === 'activity' && (
             <div className="animate-fade-in space-y-8">
-               <header>
-                  <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter leading-none mb-3">SOLICITUD DE <span className="text-secondary">SERVICIOS</span></h2>
-                  <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Nuevas cotizaciones desde la web.</p>
-               </header>
+              <header>
+                <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">CLIENTES DE <span className="text-secondary">ACTIVIDADES</span></h2>
+                <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Personas de eventos y celebraciones</p>
+              </header>
 
-               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                 {serviceRequests.map(service => (
-                   <div key={service.id} className="bg-background-card border border-white/5 p-8 rounded-[3rem] relative overflow-hidden group hover:border-secondary/40 transition-all shadow-xl">
-                      <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-20 transition-all">
-                         <span className="material-symbols-outlined text-7xl uppercase">{service.tipo === 'boda' ? 'favorite' : 'camera'}</span>
-                      </div>
-                      <div className="flex justify-between items-start mb-6">
-                         <span className="bg-secondary/10 text-secondary text-[8px] font-black px-3 py-1 rounded-full border border-secondary/20 uppercase tracking-widest">{service.tipo.replace('_', ' ')}</span>
-                         <span className="text-[10px] font-bold text-text-tertiary uppercase">{service.detalles.fechaEvento}</span>
-                      </div>
-                      <h4 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-2">{service.contacto.nombre}</h4>
-                      <p className="text-[10px] text-text-tertiary font-bold uppercase tracking-widest mb-6">{service.contacto.email}</p>
-                      
-                      <div className="space-y-4 py-6 border-y border-white/5 mb-8">
-                         <div className="flex justify-between text-[10px] font-black uppercase">
-                            <span className="text-text-tertiary tracking-widest">Duración</span>
-                            <span className="text-white">{service.detalles.horas} Horas</span>
-                         </div>
-                         <div className="flex justify-between text-[10px] font-black uppercase">
-                            <span className="text-text-tertiary tracking-widest">Locación</span>
-                            <span className="text-white">{service.detalles.locacion}</span>
-                         </div>
-                         <div className="flex justify-between text-[10px] font-black uppercase">
-                            <span className="text-text-tertiary tracking-widest">Personas</span>
-                            <span className="text-white">{service.detalles.personas}</span>
-                         </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                         <button onClick={() => handleWhatsApp(service.contacto.telefono, service.contacto.nombre, 'service')} className="flex-1 bg-white text-background font-black py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg">CONTACTAR</button>
-                         <button onClick={() => onDeleteService(service.id)} className="w-14 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error/10 transition-all">
-                            <span className="material-symbols-outlined">delete</span>
-                         </button>
-                      </div>
-                   </div>
-                 ))}
-                 {serviceRequests.length === 0 && (
-                   <div className="col-span-full py-20 text-center opacity-30">
-                      <span className="material-symbols-outlined text-6xl mb-4">inbox</span>
-                      <p className="text-[10px] font-black uppercase tracking-widest">No hay nuevas solicitudes de servicio</p>
-                   </div>
-                 )}
-               </div>
+              <div className="bg-background-card border border-white/10 rounded-[2.5rem] overflow-x-auto">
+                <table className="w-full text-left min-w-[900px]">
+                  <thead className="bg-white/[0.02] text-[9px] font-black text-text-tertiary uppercase tracking-widest border-b border-white/5">
+                    <tr>
+                      <th className="px-6 py-5">Foto</th>
+                      <th className="px-6 py-5">Nombre</th>
+                      <th className="px-6 py-5">Teléfono</th>
+                      <th className="px-6 py-5">Negocio</th>
+                      <th className="px-6 py-5">Actividad</th>
+                      <th className="px-6 py-5">Estado</th>
+                      <th className="px-6 py-5">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {activityClients.map(client => (
+                      <tr key={client.id} className="hover:bg-white/[0.01]">
+                        <td className="px-6 py-4">
+                          <img src={client.fotoReferencia || 'https://picsum.photos/50'} alt="Ref" className="w-12 h-12 rounded-lg object-cover" />
+                        </td>
+                        <td className="px-6 py-4 font-black uppercase">{client.nombre}</td>
+                        <td className="px-6 py-4 text-xs font-bold">{client.telefono}</td>
+                        <td className="px-6 py-4 text-xs">{client.negocioNombre}</td>
+                        <td className="px-6 py-4 text-xs text-secondary">{client.actividadNombre}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full text-[8px] font-black ${client.status === 'atendido' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
+                            {client.status === 'atendido' ? 'Listo' : 'Pendiente'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-2">
+                            <button onClick={() => handleWhatsApp(client.telefono, client.nombre)} className="w-8 h-8 rounded bg-success/10 text-success hover:bg-success hover:text-white transition-all flex items-center justify-center">
+                              <span className="material-symbols-outlined text-sm">chat</span>
+                            </button>
+                            <button onClick={() => handleDeleteActivity(client.id)} className="w-8 h-8 rounded bg-error/10 text-error hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          {/* SECTION: CANDIDATOS STAFF */}
+          {/* SERVICES TAB */}
+          {activeTab === 'services' && (
+            <div className="animate-fade-in space-y-8">
+              <header>
+                <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">SOLICITUDES DE <span className="text-secondary">SERVICIO</span></h2>
+              </header>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {serviceRequests.map(service => (
+                  <div key={service.id} className="bg-background-card border border-white/5 p-8 rounded-[2rem]">
+                    <span className="bg-secondary/10 text-secondary text-[8px] font-black px-3 py-1 rounded-full uppercase">{service.tipo}</span>
+                    <h4 className="text-xl font-black uppercase italic mt-4">{service.contacto.nombre}</h4>
+                    <p className="text-text-tertiary text-[10px]">{service.contacto.email}</p>
+                    <div className="my-4 space-y-2 text-[10px]">
+                      <p><strong>Fecha:</strong> {service.detalles.fechaEvento}</p>
+                      <p><strong>Duración:</strong> {service.detalles.horas}h</p>
+                      <p><strong>Personas:</strong> {service.detalles.personas}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleWhatsApp(service.contacto.telefono, service.contacto.nombre)} className="flex-1 bg-white text-background font-black py-3 rounded-xl text-[9px] uppercase">Contactar</button>
+                      <button onClick={() => handleDeleteService(service.id)} className="w-12 bg-error/10 text-error rounded-xl hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                        <span className="material-symbols-outlined">delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STAFF TAB */}
           {activeTab === 'staff' && (
             <div className="animate-fade-in space-y-8">
-               <header>
-                  <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter leading-none mb-3">RECLUTAMIENTO <span className="text-primary">STAFF</span></h2>
-                  <p className="text-text-secondary text-[10px] uppercase tracking-[0.3em] font-bold">Solicitudes de fotógrafos que desean unirse.</p>
-               </header>
-
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 {staffApplications.map(app => (
-                   <div key={app.id} className="bg-background-card border border-white/5 p-10 rounded-[3.5rem] flex flex-col gap-6 relative group overflow-hidden shadow-2xl">
-                      <div className="flex items-center gap-6">
-                        <div className="w-20 h-20 rounded-[2rem] bg-background-input border border-white/10 flex items-center justify-center text-primary">
-                          <span className="material-symbols-outlined text-4xl">photo_camera</span>
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-2xl font-black uppercase italic tracking-tighter text-white">{app.nombre}</h4>
-                          <p className="text-xs font-bold text-primary tracking-widest">{app.telefono}</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 py-6 border-t border-white/5">
-                        {/* EMAIL - NUEVO */}
-                        <div className="flex flex-col gap-1">
-                           <span className="text-[8px] font-black text-text-tertiary uppercase tracking-widest">Email de Contacto</span>
-                           <p className="text-sm font-bold text-secondary break-all">{app.email}</p>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                           <span className="text-[8px] font-black text-text-tertiary uppercase tracking-widest">Equipo Profesional</span>
-                           <p className="text-xs font-bold text-white uppercase">{app.equipo}</p>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                           <span className="text-[8px] font-black text-text-tertiary uppercase tracking-widest">Experiencia</span>
-                           <p className="text-[11px] text-text-secondary leading-relaxed font-bold uppercase tracking-wider">{app.experiencia}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3 pt-4">
-                         <button 
-                           onClick={() => onStaffAction(app.id, 'rechazado')} 
-                           className="flex-1 bg-white/5 text-text-tertiary font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-error/20 hover:text-error transition-all"
-                         >
-                           DESCARTAR
-                         </button>
-                         <button 
-                           onClick={() => handleApproveStaff(app)} 
-                           disabled={isApproving}
-                           className="flex-[1.5] bg-white text-background font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:scale-[1.03] active:scale-95 transition-all shadow-xl disabled:opacity-50"
-                         >
-                           {isApproving ? 'PROCESANDO...' : 'APROBAR INGRESO'}
-                         </button>
-                      </div>
-                   </div>
-                 ))}
-                 {staffApplications.length === 0 && (
-                   <div className="col-span-full py-20 text-center opacity-30">
-                      <span className="material-symbols-outlined text-6xl mb-4">group_add</span>
-                      <p className="text-[10px] font-black uppercase tracking-widest">No hay candidatos pendientes</p>
-                   </div>
-                 )}
-               </div>
+              <header>
+                <h2 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter">RECLUTAMIENTO <span className="text-primary">STAFF</span></h2>
+              </header>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {staffApplications.map(app => (
+                  <div key={app.id} className="bg-background-card border border-white/5 p-8 rounded-[2rem]">
+                    <h4 className="text-2xl font-black uppercase italic">{app.nombre}</h4>
+                    <p className="text-primary text-sm font-bold">{app.email}</p>
+                    <p className="text-text-tertiary text-xs">{app.telefono}</p>
+                    <div className="my-4 py-4 border-y border-white/5 space-y-2 text-[10px]">
+                      <p><strong>Equipo:</strong> {app.equipo}</p>
+                      <p><strong>Experiencia:</strong> {app.experiencia}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => handleRejectStaff(app.id)} className="flex-1 bg-white/5 text-text-tertiary font-black py-4 rounded-xl text-[9px] uppercase hover:bg-error/20 hover:text-error">Rechazar</button>
+                      <button onClick={() => handleApproveStaff(app)} disabled={isApproving} className="flex-[1.5] bg-white text-background font-black py-4 rounded-xl text-[9px] uppercase hover:scale-105 transition-all disabled:opacity-50">
+                        {isApproving ? 'Procesando...' : 'Aprobar'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {staffApplications.length === 0 && (
+                  <div className="col-span-full text-center py-20 opacity-50">
+                    <span className="material-symbols-outlined text-6xl mb-4">group_add</span>
+                    <p className="text-[10px] font-black uppercase tracking-widest">No hay candidatos pendientes</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       </main>
 
-      {/* MODAL: VISOR DE AUDITORÍA */}
-      {viewingGallery && (
-        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-10 animate-fade-in" onClick={() => setViewingGallery(null)}>
-           <div className="max-w-6xl w-full bg-background-card border border-white/10 rounded-[3.5rem] p-6 sm:p-12 relative max-h-[90vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <header className="flex justify-between items-center mb-8">
-                 <div>
-                    <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none">Visor de Auditoría</h3>
-                    <p className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest mt-2">Control de calidad Fotos Express HD</p>
-                 </div>
-                 <button onClick={() => setViewingGallery(null)} className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-error transition-all">
-                   <span className="material-symbols-outlined">close</span>
-                 </button>
-              </header>
-              <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 pr-2 scrollbar-custom">
-                 {viewingGallery.map((url, idx) => (
-                   <div key={idx} className="aspect-[4/5] rounded-2xl overflow-hidden bg-background-input border border-white/5 group relative shadow-lg">
-                      <img src={url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Auditoria" />
-                      <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                         HD FRAME {idx + 1}
-                      </div>
-                   </div>
-                 ))}
-              </div>
-           </div>
+      {/* MODALS */}
+      
+      {/* Zone Modal */}
+      {showZoneModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowZoneModal(false)}>
+          <div className="max-w-md w-full bg-background-card p-10 rounded-[2rem] border border-white/10" onClick={e => e.stopPropagation()}>
+            <h3 className="text-2xl font-black uppercase italic mb-6">Nueva Zona</h3>
+            <form onSubmit={handleCreateZone} className="space-y-4">
+              <input type="text" required value={newZone.nombre} onChange={e => setNewZone({...newZone, nombre: e.target.value})} placeholder="Nombre de la zona" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-primary" />
+              <input type="text" value={newZone.descripcion} onChange={e => setNewZone({...newZone, descripcion: e.target.value})} placeholder="Descripción (opcional)" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-primary" />
+              <button type="submit" className="w-full bg-primary text-background font-black py-5 rounded-xl uppercase tracking-widest text-xs">Crear Zona</button>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* MODAL: APROBACIÓN EXITOSA CON LINK */}
-      {approvalModal && (
-        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-10 animate-fade-in" onClick={() => setApprovalModal(null)}>
-          <div className="max-w-lg w-full bg-background-card border border-success/20 rounded-[3rem] p-8 sm:p-12 relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-success rounded-t-[3rem]"></div>
-            
-            <button onClick={() => setApprovalModal(null)} className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-error transition-all">
-              <span className="material-symbols-outlined">close</span>
-            </button>
+      {/* Business Modal */}
+      {showBusinessModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowBusinessModal(false)}>
+          <div className="max-w-md w-full bg-background-card p-10 rounded-[2rem] border border-white/10" onClick={e => e.stopPropagation()}>
+            <h3 className="text-2xl font-black uppercase italic mb-6">Nuevo Negocio</h3>
+            <form onSubmit={handleCreateBusiness} className="space-y-4">
+              <input type="text" required value={newBusiness.nombre} onChange={e => setNewBusiness({...newBusiness, nombre: e.target.value})} placeholder="Nombre del negocio" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-primary" />
+              <input type="text" value={newBusiness.direccion} onChange={e => setNewBusiness({...newBusiness, direccion: e.target.value})} placeholder="Dirección" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-primary" />
+              <input type="text" value={newBusiness.telefono} onChange={e => setNewBusiness({...newBusiness, telefono: e.target.value})} placeholder="Teléfono" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-primary" />
+              <button type="submit" className="w-full bg-white text-background font-black py-5 rounded-xl uppercase tracking-widest text-xs">Crear Negocio</button>
+            </form>
+          </div>
+        </div>
+      )}
 
-            <div className="text-center mb-10">
-              <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
+      {/* Activity Modal */}
+      {showActivityModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowActivityModal(false)}>
+          <div className="max-w-md w-full bg-background-card p-10 rounded-[2rem] border border-white/10" onClick={e => e.stopPropagation()}>
+            <h3 className="text-2xl font-black uppercase italic mb-6">Nueva Actividad</h3>
+            <form onSubmit={handleCreateActivity} className="space-y-4">
+              <select required value={newActivity.negocioId} onChange={e => setNewActivity({...newActivity, negocioId: e.target.value})} className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-secondary appearance-none">
+                <option value="">Seleccionar negocio</option>
+                {businesses.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+              </select>
+              <input type="text" required value={newActivity.nombre} onChange={e => setNewActivity({...newActivity, nombre: e.target.value})} placeholder="Nombre de la actividad" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-secondary" />
+              <input type="text" value={newActivity.descripcion} onChange={e => setNewActivity({...newActivity, descripcion: e.target.value})} placeholder="Descripción" className="w-full bg-background-input border border-white/5 rounded-xl px-5 py-4 text-white font-bold outline-none focus:border-secondary" />
+              <button type="submit" className="w-full bg-secondary text-white font-black py-5 rounded-xl uppercase tracking-widest text-xs">Crear Actividad</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Staff Modal */}
+      {showAssignModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowAssignModal(null)}>
+          <div className="max-w-md w-full bg-background-card p-10 rounded-[2rem] border border-white/10" onClick={e => e.stopPropagation()}>
+            <h3 className="text-2xl font-black uppercase italic mb-2">Asignar Staff</h3>
+            <p className="text-text-tertiary text-[10px] uppercase tracking-widest mb-6">{showAssignModal.name}</p>
+            
+            <div className="space-y-3 max-h-60 overflow-y-auto mb-6">
+              {staffUsers.map(staff => (
+                <label key={staff.id} className="flex items-center gap-3 p-4 bg-background-input rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedStaff.includes(staff.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedStaff([...selectedStaff, staff.id]);
+                      } else {
+                        setSelectedStaff(selectedStaff.filter(id => id !== staff.id));
+                      }
+                    }}
+                    className="w-5 h-5 rounded accent-primary"
+                  />
+                  <div>
+                    <p className="font-black text-sm">{staff.nombre}</p>
+                    <p className="text-text-tertiary text-[10px]">{staff.email}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            
+            <button onClick={handleAssignStaff} className="w-full bg-primary text-background font-black py-5 rounded-xl uppercase tracking-widest text-xs">
+              Guardar Asignación ({selectedStaff.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {approvalModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setApprovalModal(null)}>
+          <div className="max-w-lg w-full bg-background-card p-10 rounded-[2rem] border border-success/20" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="material-symbols-outlined text-5xl text-success">check_circle</span>
               </div>
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2">¡FOTÓGRAFO APROBADO!</h3>
-              <p className="text-text-secondary text-[11px] font-bold uppercase tracking-widest">Se ha generado el link de activación</p>
+              <h3 className="text-2xl font-black uppercase italic">¡Fotógrafo Aprobado!</h3>
             </div>
 
-            <div className="space-y-6 mb-10">
-              <div className="bg-background-input p-6 rounded-2xl border border-white/5">
-                <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-2">Nombre</p>
-                <p className="text-lg font-black text-white uppercase italic">{approvalModal.nombre}</p>
+            <div className="space-y-4 mb-6">
+              <div className="bg-background-input p-4 rounded-xl">
+                <p className="text-[8px] font-black text-text-tertiary uppercase tracking-widest mb-1">Nombre</p>
+                <p className="font-black text-white">{approvalModal.nombre}</p>
               </div>
-              
-              <div className="bg-background-input p-6 rounded-2xl border border-white/5">
-                <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-2">Email</p>
-                <p className="text-sm font-bold text-primary break-all">{approvalModal.email}</p>
+              <div className="bg-background-input p-4 rounded-xl">
+                <p className="text-[8px] font-black text-text-tertiary uppercase tracking-widest mb-1">Email</p>
+                <p className="text-primary font-bold">{approvalModal.email}</p>
               </div>
 
-              {/* Email Status */}
               {approvalModal.emailStatus && (
-                <div className={`p-4 rounded-2xl border ${approvalModal.emailStatus.status === 'success' ? 'bg-success/10 border-success/20' : 'bg-warning/10 border-warning/20'}`}>
-                  <div className="flex items-center gap-3">
-                    <span className={`material-symbols-outlined text-2xl ${approvalModal.emailStatus.status === 'success' ? 'text-success' : 'text-warning'}`}>
-                      {approvalModal.emailStatus.status === 'success' ? 'mark_email_read' : 'warning'}
-                    </span>
-                    <div>
-                      <p className={`text-[10px] font-black uppercase tracking-widest ${approvalModal.emailStatus.status === 'success' ? 'text-success' : 'text-warning'}`}>
-                        {approvalModal.emailStatus.status === 'success' ? 'Email enviado exitosamente' : 'Email no enviado'}
-                      </p>
-                      {approvalModal.emailStatus.status !== 'success' && (
-                        <p className="text-[9px] text-text-tertiary mt-1">
-                          {approvalModal.emailStatus.message?.includes('testing emails') 
-                            ? 'Modo prueba: Verifica un dominio en resend.com para enviar a cualquier email' 
-                            : approvalModal.emailStatus.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                <div className={`p-4 rounded-xl ${approvalModal.emailStatus.status === 'success' ? 'bg-success/10' : 'bg-warning/10'}`}>
+                  <p className={`text-[10px] font-black uppercase ${approvalModal.emailStatus.status === 'success' ? 'text-success' : 'text-warning'}`}>
+                    {approvalModal.emailStatus.status === 'success' ? 'Email enviado' : 'Email no enviado - Comparte el link manualmente'}
+                  </p>
                 </div>
               )}
 
-              <div className="bg-primary/5 p-6 rounded-2xl border border-primary/20">
-                <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm">link</span>
-                  Link de Activación {approvalModal.emailStatus?.status !== 'success' ? '(Compártelo manualmente)' : ''}
-                </p>
-                <div className="bg-background p-4 rounded-xl border border-white/10 break-all">
-                  <p className="text-[11px] font-mono text-text-secondary">{approvalModal.activationLink}</p>
-                </div>
-                <button 
-                  onClick={() => copyToClipboard(approvalModal.activationLink || '')}
-                  className="w-full mt-4 bg-primary text-background font-black py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
-                >
+              <div className="bg-primary/5 p-4 rounded-xl">
+                <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-2">Link de Activación</p>
+                <p className="text-[10px] font-mono text-text-secondary break-all">{approvalModal.activationLink}</p>
+                <button onClick={() => copyToClipboard(approvalModal.activationLink || '')} className="w-full mt-3 bg-primary text-background font-black py-3 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined text-lg">{linkCopied ? 'check' : 'content_copy'}</span>
-                  {linkCopied ? '¡COPIADO!' : 'COPIAR LINK'}
+                  {linkCopied ? 'Copiado!' : 'Copiar Link'}
                 </button>
               </div>
             </div>
 
-            <div className="bg-secondary/5 p-4 rounded-xl border border-secondary/20 text-center">
-              <p className="text-[9px] font-bold text-secondary uppercase tracking-wider">
-                <span className="material-symbols-outlined text-sm align-middle mr-1">info</span>
-                El fotógrafo debe abrir este link para crear su contraseña y activar su cuenta
-              </p>
-            </div>
+            <button onClick={() => setApprovalModal(null)} className="w-full bg-white/5 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs">Cerrar</button>
           </div>
         </div>
       )}
