@@ -393,6 +393,9 @@ class FotosExpressAPITester:
         print("\n📋 Testing Existing Staff Login:")
         self.test_existing_staff_login()
         
+        # Test Resend email integration specifically
+        self.test_resend_email_integration()
+        
         # Test complete photographer recruitment flow
         print("\n🎯 Testing Photographer Recruitment Flow:")
         
