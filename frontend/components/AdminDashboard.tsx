@@ -420,10 +420,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-sm font-bold text-primary break-all">{approvalModal.email}</p>
               </div>
 
+              {/* Email Status */}
+              {approvalModal.emailStatus && (
+                <div className={`p-4 rounded-2xl border ${approvalModal.emailStatus.status === 'success' ? 'bg-success/10 border-success/20' : 'bg-warning/10 border-warning/20'}`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`material-symbols-outlined text-2xl ${approvalModal.emailStatus.status === 'success' ? 'text-success' : 'text-warning'}`}>
+                      {approvalModal.emailStatus.status === 'success' ? 'mark_email_read' : 'warning'}
+                    </span>
+                    <div>
+                      <p className={`text-[10px] font-black uppercase tracking-widest ${approvalModal.emailStatus.status === 'success' ? 'text-success' : 'text-warning'}`}>
+                        {approvalModal.emailStatus.status === 'success' ? 'Email enviado exitosamente' : 'Email no enviado'}
+                      </p>
+                      {approvalModal.emailStatus.status !== 'success' && (
+                        <p className="text-[9px] text-text-tertiary mt-1">
+                          {approvalModal.emailStatus.message?.includes('testing emails') 
+                            ? 'Modo prueba: Verifica un dominio en resend.com para enviar a cualquier email' 
+                            : approvalModal.emailStatus.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-primary/5 p-6 rounded-2xl border border-primary/20">
                 <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
                   <span className="material-symbols-outlined text-sm">link</span>
-                  Link de Activación (Simular envío)
+                  Link de Activación {approvalModal.emailStatus?.status !== 'success' ? '(Compártelo manualmente)' : ''}
                 </p>
                 <div className="bg-background p-4 rounded-xl border border-white/10 break-all">
                   <p className="text-[11px] font-mono text-text-secondary">{approvalModal.activationLink}</p>
