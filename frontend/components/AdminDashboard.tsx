@@ -514,7 +514,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
                             <button onClick={() => handleWhatsApp(client.telefono, client.nombre)} className="w-8 h-8 rounded bg-success/10 text-success hover:bg-success hover:text-white transition-all flex items-center justify-center">
                               <span className="material-symbols-outlined text-sm">chat</span>
                             </button>
-                            <button onClick={() => handleDeleteActivity(client.id)} className="w-8 h-8 rounded bg-error/10 text-error hover:bg-error hover:text-white transition-all flex items-center justify-center">
+                            <button onClick={() => handleDeleteActivityClient(client.id)} className="w-8 h-8 rounded bg-error/10 text-error hover:bg-error hover:text-white transition-all flex items-center justify-center">
                               <span className="material-symbols-outlined text-sm">delete</span>
                             </button>
                           </div>
