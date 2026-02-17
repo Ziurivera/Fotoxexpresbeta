@@ -192,7 +192,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
     loadData();
   };
 
-  const handleDeleteActivity = async (id: string) => {
+  const handleDeleteActivityClient = async (id: string) => {
     await fetch(`${API_URL}/api/activity-clients/${id}`, { method: 'DELETE' });
     loadData();
   };
