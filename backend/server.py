@@ -1,12 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import os
 from pymongo import MongoClient
-from bson import ObjectId
 import uuid
+import hashlib
+import secrets
 
 app = FastAPI(title="Fotos Express API")
 
@@ -22,6 +23,7 @@ app.add_middleware(
 # MongoDB Connection
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "fotosexpress")
+APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -29,6 +31,14 @@ db = client[DB_NAME]
 clients_collection = db["clients"]
 service_requests_collection = db["service_requests"]
 staff_applications_collection = db["staff_applications"]
+staff_users_collection = db["staff_users"]
+
+# Password hashing
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return hash_password(password) == hashed
 
 # Pydantic Models
 class ClientLead(BaseModel):
@@ -84,16 +94,215 @@ class PhotoUpload(BaseModel):
     staffEmail: str
     fotosSubidas: List[str]
 
+class StaffLogin(BaseModel):
+    email: str
+    password: str
+
+class StaffActivation(BaseModel):
+    token: str
+    password: str
+
+class StaffPasswordChange(BaseModel):
+    email: str
+    currentPassword: str
+    newPassword: str
+
+class StaffUserResponse(BaseModel):
+    id: str
+    email: str
+    nombre: str
+    telefono: str
+    isActive: bool
+    createdAt: str
+
 # Helper to generate IDs
 def generate_id(prefix: str) -> str:
     return f"{prefix}{uuid.uuid4().hex[:8].upper()}"
+
+def generate_activation_token() -> str:
+    return secrets.token_urlsafe(32)
 
 # API Endpoints
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "service": "Fotos Express API"}
 
-# Client Leads
+# ==================== STAFF USER AUTHENTICATION ====================
+
+@app.post("/api/staff/approve/{staff_id}")
+def approve_staff_and_create_account(staff_id: str):
+    """Approve staff application and create activation link"""
+    # Find staff application
+    application = staff_applications_collection.find_one({"id": staff_id}, {"_id": 0})
+    if not application:
+        raise HTTPException(status_code=404, detail="Staff application not found")
+    
+    # Check if user already exists
+    existing_user = staff_users_collection.find_one({"email": application["email"]})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User account already exists for this email")
+    
+    # Generate activation token
+    activation_token = generate_activation_token()
+    token_expires = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    # Create staff user (inactive until they set password)
+    staff_user = {
+        "id": generate_id("SU"),
+        "email": application["email"],
+        "nombre": application["nombre"],
+        "telefono": application["telefono"],
+        "password_hash": None,
+        "isActive": False,
+        "activationToken": activation_token,
+        "tokenExpires": token_expires.isoformat(),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "applicationId": staff_id
+    }
+    staff_users_collection.insert_one(staff_user)
+    
+    # Update application status
+    staff_applications_collection.update_one(
+        {"id": staff_id},
+        {"$set": {"status": "aprobado"}}
+    )
+    
+    # Generate activation link
+    activation_link = f"{APP_URL}/activar-cuenta?token={activation_token}"
+    
+    return {
+        "message": "Staff approved successfully",
+        "email": application["email"],
+        "nombre": application["nombre"],
+        "activationLink": activation_link,
+        "activationToken": activation_token,
+        "expiresIn": "7 days"
+    }
+
+@app.post("/api/staff/activate")
+def activate_staff_account(activation: StaffActivation):
+    """Activate staff account by setting password"""
+    # Find user by activation token
+    user = staff_users_collection.find_one({"activationToken": activation.token}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Invalid or expired activation token")
+    
+    # Check if token is expired
+    token_expires = datetime.fromisoformat(user["tokenExpires"])
+    if datetime.now(timezone.utc) > token_expires:
+        raise HTTPException(status_code=400, detail="Activation token has expired")
+    
+    # Check if already activated
+    if user["isActive"]:
+        raise HTTPException(status_code=400, detail="Account already activated")
+    
+    # Validate password
+    if len(activation.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    
+    # Update user with password and activate
+    staff_users_collection.update_one(
+        {"activationToken": activation.token},
+        {"$set": {
+            "password_hash": hash_password(activation.password),
+            "isActive": True,
+            "activationToken": None,
+            "activatedAt": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {
+        "message": "Account activated successfully",
+        "email": user["email"],
+        "nombre": user["nombre"]
+    }
+
+@app.get("/api/staff/validate-token")
+def validate_activation_token(token: str = Query(...)):
+    """Validate if activation token is valid"""
+    user = staff_users_collection.find_one({"activationToken": token}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Invalid activation token")
+    
+    # Check if token is expired
+    token_expires = datetime.fromisoformat(user["tokenExpires"])
+    if datetime.now(timezone.utc) > token_expires:
+        raise HTTPException(status_code=400, detail="Activation token has expired")
+    
+    if user["isActive"]:
+        raise HTTPException(status_code=400, detail="Account already activated")
+    
+    return {
+        "valid": True,
+        "email": user["email"],
+        "nombre": user["nombre"]
+    }
+
+@app.post("/api/staff/login")
+def staff_login(login: StaffLogin):
+    """Login for staff users"""
+    user = staff_users_collection.find_one({"email": login.email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not user["isActive"]:
+        raise HTTPException(status_code=401, detail="Account not activated. Please check your email for activation link.")
+    
+    if not verify_password(login.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    return {
+        "message": "Login successful",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "nombre": user["nombre"],
+            "telefono": user["telefono"]
+        }
+    }
+
+@app.post("/api/staff/change-password")
+def change_staff_password(data: StaffPasswordChange):
+    """Change staff password"""
+    user = staff_users_collection.find_one({"email": data.email}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user["isActive"]:
+        raise HTTPException(status_code=400, detail="Account not activated")
+    
+    if not verify_password(data.currentPassword, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    
+    if len(data.newPassword) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    
+    staff_users_collection.update_one(
+        {"email": data.email},
+        {"$set": {
+            "password_hash": hash_password(data.newPassword),
+            "passwordChangedAt": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": "Password changed successfully"}
+
+@app.get("/api/staff/user/{email}")
+def get_staff_user(email: str):
+    """Get staff user profile"""
+    user = staff_users_collection.find_one({"email": email}, {"_id": 0, "password_hash": 0, "activationToken": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.get("/api/staff/users")
+def get_all_staff_users():
+    """Get all staff users (for admin)"""
+    users = list(staff_users_collection.find({}, {"_id": 0, "password_hash": 0, "activationToken": 0}))
+    return users
+
+# ==================== CLIENT LEADS ====================
+
 @app.get("/api/clients", response_model=List[ClientLeadResponse])
 def get_clients():
     clients = list(clients_collection.find({}, {"_id": 0}))
@@ -149,7 +358,8 @@ def upload_photos(client_id: str, upload: PhotoUpload):
     updated = clients_collection.find_one({"id": client_id}, {"_id": 0})
     return updated
 
-# Service Requests
+# ==================== SERVICE REQUESTS ====================
+
 @app.get("/api/services", response_model=List[ServiceRequestResponse])
 def get_services():
     services = list(service_requests_collection.find({}, {"_id": 0}))
@@ -170,7 +380,8 @@ def delete_service(service_id: str):
         raise HTTPException(status_code=404, detail="Service request not found")
     return {"message": "Service deleted"}
 
-# Staff Applications
+# ==================== STAFF APPLICATIONS ====================
+
 @app.get("/api/staff", response_model=List[StaffApplicationResponse])
 def get_staff_applications():
     applications = list(staff_applications_collection.find({}, {"_id": 0}))
@@ -203,13 +414,15 @@ def delete_staff_application(staff_id: str):
         raise HTTPException(status_code=404, detail="Staff application not found")
     return {"message": "Staff application deleted"}
 
-# Seed initial data
+# ==================== SEED DATA ====================
+
 @app.post("/api/seed")
 def seed_data():
     # Clear existing data
     clients_collection.delete_many({})
     service_requests_collection.delete_many({})
     staff_applications_collection.delete_many({})
+    staff_users_collection.delete_many({})
     
     # Seed clients
     clients_collection.insert_many([
@@ -220,7 +433,7 @@ def seed_data():
             "instagram": "@carla.riv",
             "aceptaRedes": True,
             "status": "atendido",
-            "atendidoPorNombre": "staff@fotosexpress.com",
+            "atendidoPorNombre": "maria@fotosexpress.com",
             "fotosSubidas": [
                 "https://picsum.photos/id/10/800/1000",
                 "https://picsum.photos/id/11/800/1000",
@@ -271,6 +484,20 @@ def seed_data():
         "especialidades": ["Evento"],
         "fotosReferencia": [],
         "status": "pendiente"
+    })
+    
+    # Seed one active staff user for testing
+    staff_users_collection.insert_one({
+        "id": "SU001",
+        "email": "staff@fotosexpress.com",
+        "nombre": "Staff Demo",
+        "telefono": "787-000-0000",
+        "password_hash": hash_password("Fotosexpress@"),
+        "isActive": True,
+        "activationToken": None,
+        "tokenExpires": None,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "applicationId": None
     })
     
     return {"message": "Data seeded successfully"}
