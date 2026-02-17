@@ -57,6 +57,90 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
+# Email sending function
+async def send_activation_email(recipient_email: str, nombre: str, activation_link: str) -> dict:
+    """Send activation email using Resend"""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not configured, skipping email send")
+        return {"status": "skipped", "reason": "No API key configured"}
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #0a0a0f; color: #ffffff; margin: 0; padding: 40px 20px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #12121a; border-radius: 24px; overflow: hidden;">
+            <tr>
+                <td style="background: linear-gradient(90deg, #67B5E6, #A78BFA); height: 6px;"></td>
+            </tr>
+            <tr>
+                <td style="padding: 50px 40px; text-align: center;">
+                    <h1 style="color: #67B5E6; font-size: 28px; font-weight: 900; text-transform: uppercase; font-style: italic; letter-spacing: -1px; margin: 0 0 10px 0;">
+                        FOTOS EXPRESS
+                    </h1>
+                    <p style="color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 3px; margin: 0 0 40px 0;">
+                        Portal Profesional de Fotografía
+                    </p>
+                    
+                    <div style="background-color: #1a1a25; border-radius: 16px; padding: 30px; margin-bottom: 30px;">
+                        <p style="color: #00bf63; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 15px 0;">
+                            ¡Felicidades, {nombre}!
+                        </p>
+                        <p style="color: #ffffff; font-size: 16px; margin: 0;">
+                            Tu solicitud para unirte al equipo de Fotos Express ha sido <strong style="color: #00bf63;">APROBADA</strong>.
+                        </p>
+                    </div>
+                    
+                    <p style="color: #888; font-size: 14px; margin: 0 0 30px 0;">
+                        Para activar tu cuenta y comenzar a trabajar, haz clic en el siguiente botón:
+                    </p>
+                    
+                    <a href="{activation_link}" style="display: inline-block; background: linear-gradient(90deg, #67B5E6, #A78BFA); color: #0a0a0f; text-decoration: none; padding: 18px 50px; border-radius: 12px; font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: 2px;">
+                        ACTIVAR MI CUENTA
+                    </a>
+                    
+                    <p style="color: #555; font-size: 11px; margin: 30px 0 0 0; text-transform: uppercase; letter-spacing: 1px;">
+                        Este enlace expira en 7 días
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td style="background-color: #0d0d12; padding: 25px 40px; text-align: center;">
+                    <p style="color: #444; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin: 0;">
+                        © 2026 Fotos Express • Puerto Rico
+                    </p>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    params = {
+        "from": SENDER_EMAIL,
+        "to": [recipient_email],
+        "subject": "🎉 ¡Bienvenido al equipo Fotos Express! - Activa tu cuenta",
+        "html": html_content
+    }
+    
+    try:
+        # Run sync SDK in thread to keep FastAPI non-blocking
+        email = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Activation email sent to {recipient_email}, email_id: {email.get('id')}")
+        return {
+            "status": "success",
+            "message": f"Email sent to {recipient_email}",
+            "email_id": email.get("id")
+        }
+    except Exception as e:
+        logger.error(f"Failed to send email to {recipient_email}: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 # Pydantic Models
 class ClientLead(BaseModel):
     nombre: str
