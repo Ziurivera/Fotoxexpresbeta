@@ -231,7 +231,7 @@ def health_check():
 # ==================== STAFF USER AUTHENTICATION ====================
 
 @app.post("/api/staff/approve/{staff_id}")
-def approve_staff_and_create_account(staff_id: str):
+async def approve_staff_and_create_account(staff_id: str):
     """Approve staff application and create activation link"""
     # Find staff application
     application = staff_applications_collection.find_one({"id": staff_id}, {"_id": 0})
@@ -271,13 +271,21 @@ def approve_staff_and_create_account(staff_id: str):
     # Generate activation link
     activation_link = f"{APP_URL}/activar-cuenta?token={activation_token}"
     
+    # Send activation email
+    email_result = await send_activation_email(
+        recipient_email=application["email"],
+        nombre=application["nombre"],
+        activation_link=activation_link
+    )
+    
     return {
         "message": "Staff approved successfully",
         "email": application["email"],
         "nombre": application["nombre"],
         "activationLink": activation_link,
         "activationToken": activation_token,
-        "expiresIn": "7 days"
+        "expiresIn": "7 days",
+        "emailStatus": email_result
     }
 
 @app.post("/api/staff/activate")
