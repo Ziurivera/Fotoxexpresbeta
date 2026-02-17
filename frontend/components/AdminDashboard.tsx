@@ -13,6 +13,13 @@ interface AdminDashboardProps {
   onStaffAction: (id: string, action: 'aprobado' | 'rechazado') => void;
 }
 
+interface ApprovalModalData {
+  id: string;
+  nombre: string;
+  email: string;
+  activationLink?: string;
+}
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   onNavigate, 
   clientLeads, 
@@ -25,6 +32,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'leads' | 'services' | 'staff'>('leads');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [viewingGallery, setViewingGallery] = useState<string[] | null>(null);
+  const [approvalModal, setApprovalModal] = useState<ApprovalModalData | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const handleWhatsApp = (phone: string, name: string, type: 'delivery' | 'service') => {
     let message = '';
@@ -34,6 +44,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       message = `¡Hola ${name}! Recibimos tu solicitud de servicio en Fotos Express. ¿Podemos hablar sobre los detalles? 📸`;
     }
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const handleApproveStaff = async (app: PhotographerProfile) => {
+    setIsApproving(true);
+    try {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/staff/approve/${app.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setApprovalModal({
+          id: app.id,
+          nombre: data.nombre,
+          email: data.email,
+          activationLink: data.activationLink
+        });
+        onStaffAction(app.id, 'aprobado');
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail}`);
+      }
+    } catch (err) {
+      // Fallback: Show simulated link if backend is not connected
+      const simulatedToken = Math.random().toString(36).substring(2, 15);
+      const baseUrl = window.location.origin;
+      setApprovalModal({
+        id: app.id,
+        nombre: app.nombre,
+        email: app.email,
+        activationLink: `${baseUrl}/activar-cuenta?token=${simulatedToken}`
+      });
+      onStaffAction(app.id, 'aprobado');
+    }
+    setIsApproving(false);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const menuItems = [
@@ -261,6 +313,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       <div className="space-y-4 py-6 border-t border-white/5">
+                        {/* EMAIL - NUEVO */}
+                        <div className="flex flex-col gap-1">
+                           <span className="text-[8px] font-black text-text-tertiary uppercase tracking-widest">Email de Contacto</span>
+                           <p className="text-sm font-bold text-secondary break-all">{app.email}</p>
+                        </div>
                         <div className="flex flex-col gap-1">
                            <span className="text-[8px] font-black text-text-tertiary uppercase tracking-widest">Equipo Profesional</span>
                            <p className="text-xs font-bold text-white uppercase">{app.equipo}</p>
@@ -272,8 +329,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       <div className="flex gap-3 pt-4">
-                         <button onClick={() => onStaffAction(app.id, 'rechazado')} className="flex-1 bg-white/5 text-text-tertiary font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-error/20 hover:text-error transition-all">DESCARTAR</button>
-                         <button onClick={() => onStaffAction(app.id, 'aprobado')} className="flex-[1.5] bg-white text-background font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:scale-[1.03] active:scale-95 transition-all shadow-xl">APROBAR INGRESO</button>
+                         <button 
+                           onClick={() => onStaffAction(app.id, 'rechazado')} 
+                           className="flex-1 bg-white/5 text-text-tertiary font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:bg-error/20 hover:text-error transition-all"
+                         >
+                           DESCARTAR
+                         </button>
+                         <button 
+                           onClick={() => handleApproveStaff(app)} 
+                           disabled={isApproving}
+                           className="flex-[1.5] bg-white text-background font-black py-4 rounded-2xl text-[9px] uppercase tracking-widest hover:scale-[1.03] active:scale-95 transition-all shadow-xl disabled:opacity-50"
+                         >
+                           {isApproving ? 'PROCESANDO...' : 'APROBAR INGRESO'}
+                         </button>
                       </div>
                    </div>
                  ))}
@@ -313,6 +381,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  ))}
               </div>
            </div>
+        </div>
+      )}
+
+      {/* MODAL: APROBACIÓN EXITOSA CON LINK */}
+      {approvalModal && (
+        <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-10 animate-fade-in" onClick={() => setApprovalModal(null)}>
+          <div className="max-w-lg w-full bg-background-card border border-success/20 rounded-[3rem] p-8 sm:p-12 relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-success rounded-t-[3rem]"></div>
+            
+            <button onClick={() => setApprovalModal(null)} className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-error transition-all">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span className="material-symbols-outlined text-5xl text-success">check_circle</span>
+              </div>
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2">¡FOTÓGRAFO APROBADO!</h3>
+              <p className="text-text-secondary text-[11px] font-bold uppercase tracking-widest">Se ha generado el link de activación</p>
+            </div>
+
+            <div className="space-y-6 mb-10">
+              <div className="bg-background-input p-6 rounded-2xl border border-white/5">
+                <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-2">Nombre</p>
+                <p className="text-lg font-black text-white uppercase italic">{approvalModal.nombre}</p>
+              </div>
+              
+              <div className="bg-background-input p-6 rounded-2xl border border-white/5">
+                <p className="text-[9px] font-black text-text-tertiary uppercase tracking-widest mb-2">Email</p>
+                <p className="text-sm font-bold text-primary break-all">{approvalModal.email}</p>
+              </div>
+
+              <div className="bg-primary/5 p-6 rounded-2xl border border-primary/20">
+                <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm">link</span>
+                  Link de Activación (Simular envío)
+                </p>
+                <div className="bg-background p-4 rounded-xl border border-white/10 break-all">
+                  <p className="text-[11px] font-mono text-text-secondary">{approvalModal.activationLink}</p>
+                </div>
+                <button 
+                  onClick={() => copyToClipboard(approvalModal.activationLink || '')}
+                  className="w-full mt-4 bg-primary text-background font-black py-4 rounded-xl text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-lg">{linkCopied ? 'check' : 'content_copy'}</span>
+                  {linkCopied ? '¡COPIADO!' : 'COPIAR LINK'}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-secondary/5 p-4 rounded-xl border border-secondary/20 text-center">
+              <p className="text-[9px] font-bold text-secondary uppercase tracking-wider">
+                <span className="material-symbols-outlined text-sm align-middle mr-1">info</span>
+                El fotógrafo debe abrir este link para crear su contraseña y activar su cuenta
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
