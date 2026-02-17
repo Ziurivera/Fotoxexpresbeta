@@ -1,287 +1,388 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { AppView } from '../types';
-import { ExtendedClientLead } from '../App';
+import React, { useState, useEffect } from 'react';
+import { AppView, AmbulantClient, ActivityClient, Business, Activity, Zone } from '../types';
 
 interface MemoriesPageProps {
   onNavigate: (view: AppView) => void;
-  clientLeads: ExtendedClientLead[];
 }
 
-type SearchState = 'idle' | 'searching' | 'not_registered' | 'pending' | 'ready';
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const countryCodes = [
   { code: '+1', country: 'PR/US' },
   { code: '+1-809', country: 'DO' },
   { code: '+52', country: 'MX' },
   { code: '+34', country: 'ES' },
-  { code: '+57', country: 'CO' },
 ];
 
-const MemoriesPage: React.FC<MemoriesPageProps> = ({ onNavigate, clientLeads }) => {
+const MemoriesPage: React.FC<MemoriesPageProps> = ({ onNavigate }) => {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'ambulante' | 'actividad'>('ambulante');
+  
+  // Search state
   const [phone, setPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+1');
-  const [searchState, setSearchState] = useState<SearchState>('idle');
-  const [countdown, setCountdown] = useState(10);
-  const [activeLead, setActiveLead] = useState<ExtendedClientLead | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState('');
   
-  // Lightbox State
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // Activity selection state
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState('');
+  const [selectedActivity, setSelectedActivity] = useState('');
+  
+  // Results
+  const [ambulantResult, setAmbulantResult] = useState<AmbulantClient | null>(null);
+  const [activityResult, setActivityResult] = useState<ActivityClient | null>(null);
+  
+  // Gallery state
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  const handleSearch = () => {
-    setSearchState('searching');
-    setTimeout(() => {
-      const foundLead = clientLeads.find(l => l.telefono === phone);
-      
-      if (foundLead) {
-        setActiveLead(foundLead);
-        if (foundLead.status === 'atendido') {
-          setSearchState('ready');
+  // Load businesses and activities
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [bizRes, actRes] = await Promise.all([
+          fetch(`${API_URL}/api/businesses/active`),
+          fetch(`${API_URL}/api/activities/active`)
+        ]);
+        if (bizRes.ok) setBusinesses(await bizRes.json());
+        if (actRes.ok) setActivities(await actRes.json());
+      } catch (err) {
+        console.error('Error loading data:', err);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setAmbulantResult(null);
+    setActivityResult(null);
+    setIsSearching(true);
+
+    const fullPhone = phone.replace(/\D/g, '');
+
+    try {
+      if (activeTab === 'ambulante') {
+        const res = await fetch(`${API_URL}/api/ambulant-clients/phone/${fullPhone}`);
+        if (res.ok) {
+          setAmbulantResult(await res.json());
         } else {
-          setSearchState('pending');
+          setError('No encontramos fotos asociadas a este número. Verifica e intenta de nuevo.');
         }
       } else {
-        setSearchState('not_registered');
-        setCountdown(10);
+        if (!selectedBusiness || !selectedActivity) {
+          setError('Por favor selecciona el negocio y la actividad.');
+          setIsSearching(false);
+          return;
+        }
+        const res = await fetch(`${API_URL}/api/activity-clients/phone/${fullPhone}?negocioId=${selectedBusiness}&actividadId=${selectedActivity}`);
+        if (res.ok) {
+          setActivityResult(await res.json());
+        } else {
+          setError('No encontramos fotos asociadas a este número en esta actividad.');
+        }
       }
-    }, 1500);
+    } catch (err) {
+      setError('Error de conexión. Intenta de nuevo.');
+    }
+
+    setIsSearching(false);
   };
 
-  useEffect(() => {
-    let timer: number;
-    if (searchState === 'not_registered' && countdown > 0) {
-      timer = window.setInterval(() => setCountdown(c => c - 1), 1000);
-    } else if (searchState === 'not_registered' && countdown === 0) {
-      onNavigate(AppView.CLIENT_REGISTRATION);
-    }
-    return () => clearInterval(timer);
-  }, [searchState, countdown, onNavigate]);
+  const currentResult = activeTab === 'ambulante' ? ambulantResult : activityResult;
+  const currentPhotos = currentResult?.fotosSubidas || [];
 
-  const nextImage = useCallback(() => {
-    if (activeLead?.fotosSubidas && selectedIndex !== null) {
-      setSelectedIndex((prev) => (prev! + 1) % activeLead.fotosSubidas!.length);
-    }
-  }, [activeLead, selectedIndex]);
+  const resetSearch = () => {
+    setAmbulantResult(null);
+    setActivityResult(null);
+    setPhone('');
+    setError('');
+    setSelectedBusiness('');
+    setSelectedActivity('');
+  };
 
-  const prevImage = useCallback(() => {
-    if (activeLead?.fotosSubidas && selectedIndex !== null) {
-      setSelectedIndex((prev) => (prev! - 1 + activeLead.fotosSubidas!.length) % activeLead.fotosSubidas!.length);
-    }
-  }, [activeLead, selectedIndex]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedIndex === null) return;
-      if (e.key === 'ArrowRight') nextImage();
-      if (e.key === 'ArrowLeft') prevImage();
-      if (e.key === 'Escape') setSelectedIndex(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex, nextImage, prevImage]);
-
-  // Pantalla de Fotos Listas
-  if (searchState === 'ready' && activeLead) {
-    return (
-      <div className="px-4 sm:px-10 py-28 sm:py-36 animate-fade-in max-w-7xl mx-auto">
-        <header className="flex flex-col sm:flex-row justify-between items-center sm:items-end gap-8 mb-16 sm:mb-24">
-          <div className="text-center sm:text-left space-y-4">
-            <h2 className="text-6xl sm:text-8xl font-black italic uppercase tracking-tighter leading-none">HOLA, <span className="neon-glow-primary">{activeLead.nombre.split(' ')[0]}</span></h2>
-            <div className="flex items-center justify-center sm:justify-start gap-3">
-              <span className="w-3 h-3 rounded-full bg-success animate-pulse"></span>
-              <p className="text-[10px] sm:text-sm font-black uppercase tracking-[0.4em] text-text-secondary">Tus fotos están: <span className="text-success">LISTAS HD</span></p>
-            </div>
-          </div>
-          <button className="w-full sm:w-auto bg-white text-background font-black px-12 py-5 sm:py-6 rounded-2xl flex items-center justify-center gap-4 text-[11px] sm:text-xs uppercase tracking-[0.3em] shadow-[0_20px_40px_rgba(255,255,255,0.1)] hover:scale-105 active:scale-95 transition-all">
-            <span className="material-symbols-outlined text-2xl font-bold">cloud_download</span>
-            DESCARGAR ÁLBUM COMPLETO
-          </button>
-        </header>
-        
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-8">
-          {(activeLead.fotosSubidas || []).map((url, idx) => (
-            <div 
-              key={idx} 
-              onClick={() => setSelectedIndex(idx)}
-              className="group relative aspect-[3/4] overflow-hidden rounded-[2.5rem] bg-background-card border border-white/5 transition-all hover:border-primary/50 shadow-lg cursor-pointer"
-            >
-              <img src={url} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={`Capture ${idx}`} />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all p-6 flex flex-col justify-end">
-                <div className="w-full bg-primary text-background font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                   <span className="material-symbols-outlined text-sm">zoom_in</span>
-                   AMPLIAR
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Fullscreen Slider (Lightbox) */}
-        {selectedIndex !== null && activeLead.fotosSubidas && (
-          <div 
-            className="fixed inset-0 z-[200] bg-background/98 backdrop-blur-3xl flex items-center justify-center p-4 sm:p-10 animate-fade-in select-none"
-            onClick={() => setSelectedIndex(null)}
-          >
-            {/* Botón Cerrar (X) - Superior Derecha Accesible */}
-            <button 
-              onClick={(e) => { e.stopPropagation(); setSelectedIndex(null); }}
-              className="fixed top-8 right-8 w-16 h-16 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-error transition-all active:scale-90 z-[210] shadow-2xl border border-white/10"
-              aria-label="Cerrar visor"
-            >
-              <span className="material-symbols-outlined text-4xl">close</span>
-            </button>
-
-            {/* Navegación: Atrás */}
-            <button 
-              onClick={(e) => { e.stopPropagation(); prevImage(); }}
-              className="absolute left-4 sm:left-10 w-16 h-16 sm:w-24 sm:h-24 flex items-center justify-center text-white/20 hover:text-primary transition-all active:scale-75 z-[210]"
-              aria-label="Foto anterior"
-            >
-              <span className="material-symbols-outlined text-5xl sm:text-7xl">chevron_left</span>
-            </button>
-
-            {/* Contenedor de Imagen Central */}
-            <div className="relative w-full max-w-4xl h-full flex flex-col items-center justify-center gap-6 z-[205]" onClick={(e) => e.stopPropagation()}>
-              <img 
-                src={activeLead.fotosSubidas[selectedIndex]} 
-                className="max-w-full max-h-[70vh] object-contain rounded-3xl sm:rounded-[4rem] shadow-[0_0_120px_rgba(103,181,230,0.15)] border border-white/5 animate-fade-in" 
-                alt="Fullscreen" 
-              />
-              
-              <div className="flex flex-col items-center gap-6 w-full px-4">
-                <div className="bg-white/5 border border-white/10 px-8 py-3 rounded-full flex items-center gap-4 backdrop-blur-md">
-                  <span className="text-[10px] font-black uppercase tracking-[0.4em] text-text-tertiary">Tu Recuerdo</span>
-                  <span className="text-xl font-black italic text-primary">{selectedIndex + 1} / {activeLead.fotosSubidas.length}</span>
-                </div>
-                
-                <div className="flex flex-wrap justify-center gap-4 w-full">
-                  <button 
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = activeLead.fotosSubidas![selectedIndex!];
-                      link.download = `Recuerdo-${selectedIndex! + 1}.jpg`;
-                      link.click();
-                    }}
-                    className="bg-white text-background font-black px-10 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-xl flex items-center gap-3"
-                  >
-                    <span className="material-symbols-outlined text-lg">download</span>
-                    GUARDAR HD
-                  </button>
-
-                  <button 
-                    onClick={() => setSelectedIndex(null)}
-                    className="bg-white/5 border border-white/10 text-white font-black px-10 py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-error hover:text-white transition-all shadow-xl flex items-center gap-3"
-                  >
-                    <span className="material-symbols-outlined text-lg">close</span>
-                    CERRAR VISOR
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Navegación: Adelante */}
-            <button 
-              onClick={(e) => { e.stopPropagation(); nextImage(); }}
-              className="absolute right-4 sm:right-10 w-16 h-16 sm:w-24 sm:h-24 flex items-center justify-center text-white/20 hover:text-primary transition-all active:scale-75 z-[210]"
-              aria-label="Siguiente foto"
-            >
-              <span className="material-symbols-outlined text-5xl sm:text-7xl">chevron_right</span>
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Pantalla de Fotos en Proceso (Pending)
-  if (searchState === 'pending') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center pt-24 px-4 pb-12 animate-fade-in">
-        <div className="w-full max-w-md bg-background-card p-12 sm:p-16 rounded-[4rem] border border-secondary/20 text-center shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-secondary/50"></div>
-          
-          <div className="relative w-28 h-28 mx-auto mb-10">
-            <div className="absolute inset-0 bg-secondary/10 rounded-full animate-ping"></div>
-            <div className="relative w-full h-full bg-secondary/20 rounded-full flex items-center justify-center border border-secondary/30">
-              <span className="material-symbols-outlined text-secondary text-5xl animate-spin-slow">auto_fix_high</span>
-            </div>
-          </div>
-
-          <h2 className="text-3xl font-black uppercase italic mb-6 tracking-tighter leading-none">
-            FOTOS EN <br />
-            <span className="text-secondary">PROCESO</span>
-          </h2>
-          
-          <div className="space-y-6 mb-12">
-            <p className="text-white font-black uppercase text-[12px] tracking-widest">
-              ¡Hola {activeLead?.nombre.split(' ')[0]}! Hemos localizado tu registro.
-            </p>
-            <p className="text-text-secondary leading-relaxed font-bold uppercase text-[10px] tracking-[0.2em] px-4">
-              Aun sus fotos se están editando, coteje de nuevo en las próximas horas o espere a que nuestro equipo le notifique por WhatsApp.
-            </p>
-          </div>
-
-          <button onClick={() => onNavigate(AppView.LANDING)} className="w-full bg-white text-background font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] hover:scale-105 active:scale-95 transition-all shadow-xl">
-            ENTENDIDO
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Filter activities by selected business
+  const filteredActivities = activities.filter(a => a.negocioId === selectedBusiness);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center pt-24 px-4 pb-12">
-      <div className="w-full max-w-md space-y-8 animate-fade-in">
+    <div className="min-h-screen pt-28 pb-20 px-6">
+      <div className="max-w-4xl mx-auto">
         
-        {searchState === 'not_registered' ? (
-          <div className="bg-background-card p-12 sm:p-16 rounded-[4rem] border border-error/20 text-center shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-error/50"></div>
-            <div className="w-24 h-24 bg-error/10 rounded-full flex items-center justify-center mx-auto mb-10">
-              <span className="material-symbols-outlined text-error text-6xl">no_accounts</span>
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter leading-none mb-4">
+            MIS <span className="text-primary">FOTOS</span>
+          </h1>
+          <p className="text-text-tertiary text-[11px] uppercase tracking-[0.4em] font-bold">
+            Busca y descarga tus fotografías HD
+          </p>
+        </div>
+
+        {/* Show results or search form */}
+        {currentResult && currentResult.status === 'atendido' ? (
+          // GALLERY VIEW
+          <div className="animate-fade-in">
+            <div className="bg-background-card border border-white/5 rounded-[3rem] p-8 md:p-12 mb-8">
+              <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
+                {currentResult.fotoReferencia && (
+                  <img 
+                    src={currentResult.fotoReferencia} 
+                    alt="Referencia" 
+                    className="w-24 h-24 rounded-2xl object-cover border border-white/10"
+                  />
+                )}
+                <div className="text-center md:text-left">
+                  <h2 className="text-3xl font-black uppercase italic tracking-tighter">{currentResult.nombre}</h2>
+                  <p className="text-text-tertiary text-[10px] uppercase tracking-widest font-bold mt-1">
+                    {activeTab === 'ambulante' 
+                      ? `Zona: ${(ambulantResult as AmbulantClient)?.zonaNombre}`
+                      : `${(activityResult as ActivityClient)?.negocioNombre} • ${(activityResult as ActivityClient)?.actividadNombre}`
+                    }
+                  </p>
+                  <p className="text-primary text-xs font-bold mt-2">{currentPhotos.length} fotos disponibles</p>
+                </div>
+              </div>
+
+              {/* Photo Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {currentPhotos.map((url, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => setLightboxIndex(idx)}
+                    className="aspect-[4/5] rounded-2xl overflow-hidden cursor-pointer group relative bg-background-input border border-white/5"
+                  >
+                    <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <span className="material-symbols-outlined text-white text-3xl">zoom_in</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <h2 className="text-3xl font-black uppercase italic mb-4 tracking-tighter">SESIÓN NO ENCONTRADA</h2>
-            <p className="text-text-secondary text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] leading-relaxed mb-12 px-2">
-              El número <span className="text-white">{countryCode} {phone}</span> no aparece en nuestro sistema.
+
+            <button 
+              onClick={resetSearch}
+              className="w-full bg-white/5 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs hover:bg-white/10 transition-all"
+            >
+              BUSCAR OTRA PERSONA
+            </button>
+          </div>
+        ) : currentResult && currentResult.status === 'esperando_fotos' ? (
+          // WAITING VIEW
+          <div className="bg-background-card border border-warning/20 rounded-[3rem] p-12 text-center animate-fade-in">
+            <div className="w-24 h-24 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-8">
+              <span className="material-symbols-outlined text-warning text-5xl animate-pulse">hourglass_top</span>
+            </div>
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-4">Fotos en Proceso</h2>
+            <p className="text-text-secondary text-sm mb-8">
+              ¡Hola <strong>{currentResult.nombre}</strong>! Tus fotos aún están siendo procesadas. 
+              Te notificaremos cuando estén listas.
             </p>
-            <button onClick={() => onNavigate(AppView.CLIENT_REGISTRATION)} className="w-full bg-white text-background font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] hover:scale-105 transition-all shadow-xl">
-              IR A REGISTRO AHORA
+            <button onClick={resetSearch} className="bg-white text-background font-black py-4 px-10 rounded-2xl uppercase tracking-widest text-xs">
+              VOLVER
             </button>
           </div>
         ) : (
-          <div className="bg-background-card p-10 sm:p-14 rounded-[4rem] border border-white/5 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-logo"></div>
-            <div className="text-center mb-14">
-              <h2 className="text-6xl sm:text-7xl font-black italic uppercase tracking-tighter mb-4 leading-none">MIS <span className="neon-glow-primary">FOTOS</span></h2>
-              <p className="text-text-tertiary text-[10px] font-black uppercase tracking-[0.5em] opacity-60">Acceso Seguro con tu Móvil</p>
-            </div>
-            
-            <div className="space-y-8">
-              <div className="flex gap-2 h-16 sm:h-20">
-                <div className="relative shrink-0">
-                  <select 
-                    value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    className="h-full bg-background-input border border-white/5 rounded-3xl px-4 text-white text-[11px] font-black outline-none focus:border-primary min-w-[85px] text-center transition-all cursor-pointer appearance-none"
-                  >
-                    {countryCodes.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                  </select>
-                </div>
-                <input 
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="000-0000"
-                  className="flex-1 h-full bg-background-input border border-white/5 rounded-3xl px-8 text-white outline-none focus:border-primary font-bold text-xl tracking-[0.2em] transition-all"
-                />
-              </div>
-              
-              <button 
-                onClick={handleSearch}
-                disabled={searchState === 'searching' || phone.length < 7}
-                className="w-full bg-primary text-background font-black h-16 sm:h-24 rounded-[2rem] sm:rounded-3xl flex items-center justify-center gap-4 hover:scale-[1.02] active:scale-95 transition-all shadow-2xl shadow-primary/20 disabled:opacity-50 uppercase tracking-[0.4em] text-[11px] sm:text-xs"
+          // SEARCH FORM
+          <div className="animate-fade-in">
+            {/* Tab Selector */}
+            <div className="flex bg-background-card border border-white/5 rounded-2xl p-2 mb-8">
+              <button
+                onClick={() => { setActiveTab('ambulante'); resetSearch(); }}
+                className={`flex-1 py-4 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                  activeTab === 'ambulante' 
+                    ? 'bg-primary text-background' 
+                    : 'text-text-tertiary hover:text-white'
+                }`}
               >
-                {searchState === 'searching' ? <span className="material-symbols-outlined animate-spin text-3xl">sync</span> : 'VER MI GALERÍA HD'}
+                <span className="material-symbols-outlined text-lg align-middle mr-2">directions_walk</span>
+                FOTOS AMBULANTES
               </button>
+              <button
+                onClick={() => { setActiveTab('actividad'); resetSearch(); }}
+                className={`flex-1 py-4 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                  activeTab === 'actividad' 
+                    ? 'bg-secondary text-background' 
+                    : 'text-text-tertiary hover:text-white'
+                }`}
+              >
+                <span className="material-symbols-outlined text-lg align-middle mr-2">celebration</span>
+                FOTOS DE ACTIVIDAD
+              </button>
+            </div>
+
+            {/* Search Form */}
+            <div className="bg-background-card border border-white/5 rounded-[3rem] p-8 md:p-12">
+              <div className="text-center mb-10">
+                <div className={`w-20 h-20 ${activeTab === 'ambulante' ? 'bg-primary/10' : 'bg-secondary/10'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                  <span className={`material-symbols-outlined text-4xl ${activeTab === 'ambulante' ? 'text-primary' : 'text-secondary'}`}>
+                    {activeTab === 'ambulante' ? 'photo_camera' : 'event'}
+                  </span>
+                </div>
+                <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-2">
+                  {activeTab === 'ambulante' ? 'Fotos Ambulantes' : 'Fotos de Actividad'}
+                </h2>
+                <p className="text-text-tertiary text-[10px] uppercase tracking-widest font-bold">
+                  {activeTab === 'ambulante' 
+                    ? 'Fotos tomadas en la calle o lugares públicos'
+                    : 'Fotos de eventos, fiestas y celebraciones'
+                  }
+                </p>
+              </div>
+
+              <form onSubmit={handleSearch} className="space-y-6">
+                {/* Activity Selection (only for actividad tab) */}
+                {activeTab === 'actividad' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-2">
+                        Selecciona el Negocio
+                      </label>
+                      <select
+                        value={selectedBusiness}
+                        onChange={(e) => { setSelectedBusiness(e.target.value); setSelectedActivity(''); }}
+                        className="w-full bg-background-input border border-white/5 rounded-2xl px-6 py-5 text-white font-bold outline-none focus:border-secondary transition-all appearance-none cursor-pointer"
+                        required
+                      >
+                        <option value="">-- Seleccionar negocio --</option>
+                        {businesses.map(b => (
+                          <option key={b.id} value={b.id}>{b.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedBusiness && (
+                      <div className="space-y-2 animate-fade-in">
+                        <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-2">
+                          Selecciona la Actividad
+                        </label>
+                        <select
+                          value={selectedActivity}
+                          onChange={(e) => setSelectedActivity(e.target.value)}
+                          className="w-full bg-background-input border border-white/5 rounded-2xl px-6 py-5 text-white font-bold outline-none focus:border-secondary transition-all appearance-none cursor-pointer"
+                          required
+                        >
+                          <option value="">-- Seleccionar actividad --</option>
+                          {filteredActivities.map(a => (
+                            <option key={a.id} value={a.id}>{a.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Phone Input */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-text-tertiary uppercase tracking-widest ml-2">
+                    Tu Número de Teléfono
+                  </label>
+                  <div className="flex gap-3">
+                    <select
+                      value={countryCode}
+                      onChange={(e) => setCountryCode(e.target.value)}
+                      className="bg-background-input border border-white/5 rounded-2xl px-4 py-5 text-white font-bold outline-none appearance-none cursor-pointer w-28"
+                    >
+                      {countryCodes.map(c => (
+                        <option key={c.code} value={c.code}>{c.code}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="787-000-0000"
+                      className="flex-1 bg-background-input border border-white/5 rounded-2xl px-6 py-5 text-white font-bold outline-none focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="bg-error/10 border border-error/20 p-4 rounded-xl">
+                    <p className="text-error text-[11px] font-black uppercase tracking-widest text-center">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isSearching || (activeTab === 'actividad' && (!selectedBusiness || !selectedActivity))}
+                  className={`w-full font-black py-6 rounded-2xl uppercase tracking-widest text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-3 ${
+                    activeTab === 'ambulante' 
+                      ? 'bg-gradient-logo text-background hover:scale-[1.02]' 
+                      : 'bg-secondary text-white hover:scale-[1.02]'
+                  }`}
+                >
+                  {isSearching ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin">sync</span>
+                      BUSCANDO...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined">search</span>
+                      BUSCAR MIS FOTOS
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {lightboxIndex !== null && currentPhotos.length > 0 && (
+          <div 
+            className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in"
+            onClick={() => setLightboxIndex(null)}
+          >
+            <button 
+              onClick={() => setLightboxIndex(null)}
+              className="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all z-10"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+
+            {lightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1); }}
+                className="absolute left-4 md:left-8 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all"
+              >
+                <span className="material-symbols-outlined">chevron_left</span>
+              </button>
+            )}
+
+            {lightboxIndex < currentPhotos.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1); }}
+                className="absolute right-4 md:right-8 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-all"
+              >
+                <span className="material-symbols-outlined">chevron_right</span>
+              </button>
+            )}
+
+            <img
+              src={currentPhotos[lightboxIndex]}
+              alt="Foto HD"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+              <span className="text-white/60 text-[10px] font-black uppercase tracking-widest">
+                {lightboxIndex + 1} / {currentPhotos.length}
+              </span>
+              <a
+                href={currentPhotos[lightboxIndex]}
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="bg-primary text-background px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all"
+              >
+                <span className="material-symbols-outlined text-lg">download</span>
+                DESCARGAR
+              </a>
             </div>
           </div>
         )}
