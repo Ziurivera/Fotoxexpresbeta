@@ -65,7 +65,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           id: app.id,
           nombre: data.nombre,
           email: data.email,
-          activationLink: data.activationLink
+          activationLink: data.activationLink,
+          emailStatus: data.emailStatus
         });
         onStaffAction(app.id, 'aprobado');
       } else {
@@ -80,7 +81,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         id: app.id,
         nombre: app.nombre,
         email: app.email,
-        activationLink: `${baseUrl}/activar-cuenta?token=${simulatedToken}`
+        activationLink: `${baseUrl}/activar-cuenta?token=${simulatedToken}`,
+        emailStatus: { status: 'skipped', message: 'Backend no disponible' }
       });
       onStaffAction(app.id, 'aprobado');
     }
