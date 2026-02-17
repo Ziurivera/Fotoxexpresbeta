@@ -41,10 +41,18 @@ Importar y hacer realidad el proyecto de GitHub: https://github.com/Ziurivera/Fo
 - **Admin**: Contraseña: Fotosexpress2026$
 - **Cliente de prueba**: Teléfono: 3234764379 (Carla Rivera)
 
+## Implementado (Feb 17, 2026) - Sistema de Reclutamiento
+- [x] Email visible en tarjeta de candidato en panel Admin
+- [x] Modal de aprobación con link de activación único
+- [x] Página de activación de cuenta (/activar-cuenta?token=xxx)
+- [x] Flujo profesional tipo Google/Uber: link -> crear contraseña -> cuenta activa
+- [x] Sistema de login para staff con validación de contraseña
+- [x] Sección "Mi Perfil" en Staff Dashboard para cambiar contraseña
+- [x] Backend completo: approve, activate, login, change-password APIs
+
 ## Backlog / Mejoras Futuras
-- P0: Integrar frontend con backend API (actualmente usa estado local)
 - P0: Sistema de upload real de fotos (storage)
-- P1: Autenticación JWT real (actualmente validación en frontend)
+- P1: Envío real de emails (SendGrid/Resend) para links de activación
 - P1: Notificaciones WhatsApp automáticas
 - P2: Sistema de pagos para servicios
 - P2: Galería con descarga masiva
