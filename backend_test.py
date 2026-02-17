@@ -341,7 +341,7 @@ class FotosExpressAPITester:
         print("\n🎯 Testing Photographer Recruitment Flow:")
         
         # Step 1: Approve staff candidate P01 (Javier Rodriguez)
-        activation_token = self.test_staff_approve_and_activation_flow()
+        activation_token, email_status = self.test_staff_approve_and_activation_flow()
         
         if activation_token:
             # Step 2: Validate activation token
