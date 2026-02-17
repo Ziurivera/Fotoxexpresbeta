@@ -177,6 +177,132 @@ class FotosExpressAPITester:
             self.log_result("Create Service Request", False, error_msg=str(e))
             return None
 
+    def test_staff_approve_and_activation_flow(self):
+        """Test complete staff approval and activation flow"""
+        # Step 1: Approve staff member P01 (Javier Rodriguez)
+        try:
+            response = requests.post(f"{self.base_url}/api/staff/approve/P01", timeout=10)
+            success = response.status_code == 200
+            self.log_result("Approve Staff P01", success, response.status_code)
+            
+            if not success:
+                return None
+                
+            data = response.json()
+            print(f"   Approved: {data.get('nombre')} ({data.get('email')})")
+            print(f"   Activation Link: {data.get('activationLink')}")
+            
+            activation_token = data.get('activationToken')
+            if not activation_token:
+                self.log_result("Extract Activation Token", False, error_msg="No token in response")
+                return None
+                
+            return activation_token
+            
+        except Exception as e:
+            self.log_result("Approve Staff P01", False, error_msg=str(e))
+            return None
+
+    def test_validate_activation_token(self, token):
+        """Test token validation"""
+        try:
+            response = requests.get(f"{self.base_url}/api/staff/validate-token?token={token}", timeout=10)
+            success = response.status_code == 200
+            self.log_result("Validate Activation Token", success, response.status_code)
+            
+            if success:
+                data = response.json()
+                print(f"   Valid token for: {data.get('nombre')} ({data.get('email')})")
+                return True
+            return False
+            
+        except Exception as e:
+            self.log_result("Validate Activation Token", False, error_msg=str(e))
+            return False
+
+    def test_activate_staff_account(self, token):
+        """Test account activation with password"""
+        activation_data = {
+            "token": token,
+            "password": "TestPassword123!"
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/staff/activate",
+                json=activation_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            success = response.status_code == 200
+            self.log_result("Activate Staff Account", success, response.status_code)
+            
+            if success:
+                data = response.json()
+                print(f"   Account activated for: {data.get('nombre')} ({data.get('email')})")
+                return data.get('email')
+            return None
+            
+        except Exception as e:
+            self.log_result("Activate Staff Account", False, error_msg=str(e))
+            return None
+
+    def test_staff_login(self, email, password):
+        """Test staff member login"""
+        login_data = {
+            "email": email,
+            "password": password
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/staff/login",
+                json=login_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            success = response.status_code == 200
+            self.log_result(f"Staff Login ({email})", success, response.status_code)
+            
+            if success:
+                data = response.json()
+                user = data.get('user', {})
+                print(f"   Login successful: {user.get('nombre')} (ID: {user.get('id')})")
+                return True
+            return False
+            
+        except Exception as e:
+            self.log_result(f"Staff Login ({email})", False, error_msg=str(e))
+            return False
+
+    def test_staff_change_password(self, email, current_password, new_password):
+        """Test changing staff password"""
+        password_data = {
+            "email": email,
+            "currentPassword": current_password,
+            "newPassword": new_password
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/staff/change-password",
+                json=password_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            success = response.status_code == 200
+            self.log_result("Change Staff Password", success, response.status_code)
+            
+            if success:
+                print("   Password changed successfully")
+                return True
+            return False
+            
+        except Exception as e:
+            self.log_result("Change Staff Password", False, error_msg=str(e))
+            return False
+
+    def test_existing_staff_login(self):
+        """Test login with existing demo staff account"""
+        return self.test_staff_login("staff@fotosexpress.com", "Fotosexpress@")
+
     def run_all_tests(self):
         """Run comprehensive API tests"""
         print("🧪 Starting Fotos Express API Tests")
