@@ -366,6 +366,10 @@ class FotosExpressAPITester:
             self.log_result("Resend Email Integration", False, error_msg=str(e))
             return False
 
+    def test_existing_staff_login(self):
+        """Test login with existing demo staff account"""
+        return self.test_staff_login("staff@fotosexpress.com", "Fotosexpress@")
+
     def run_all_tests(self):
         """Run comprehensive API tests including photographer recruitment flow"""
         print("🧪 Starting Fotos Express Photographer Recruitment API Tests")
