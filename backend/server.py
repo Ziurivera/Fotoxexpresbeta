@@ -4,10 +4,21 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import os
+import asyncio
+import logging
 from pymongo import MongoClient
 import uuid
 import hashlib
 import secrets
+import resend
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Fotos Express API")
 
@@ -23,9 +34,15 @@ app.add_middleware(
 # MongoDB Connection
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "fotosexpress")
-APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
+APP_URL = os.environ.get("APP_URL", "https://686b811e-993d-4293-bfa6-b6ba1d222226.preview.emergentagent.com")
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
+
+# Resend Configuration
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 # Collections
 clients_collection = db["clients"]
