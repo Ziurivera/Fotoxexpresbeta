@@ -178,7 +178,7 @@ class FotosExpressAPITester:
             return None
 
     def test_staff_approve_and_activation_flow(self):
-        """Test complete staff approval and activation flow"""
+        """Test complete staff approval and activation flow with Resend email status"""
         # Step 1: Approve staff member P01 (Javier Rodriguez)
         try:
             response = requests.post(f"{self.base_url}/api/staff/approve/P01", timeout=10)
@@ -186,22 +186,33 @@ class FotosExpressAPITester:
             self.log_result("Approve Staff P01", success, response.status_code)
             
             if not success:
-                return None
+                return None, None
                 
             data = response.json()
             print(f"   Approved: {data.get('nombre')} ({data.get('email')})")
             print(f"   Activation Link: {data.get('activationLink')}")
             
+            # Test new Resend email status feature
+            email_status = data.get('emailStatus')
+            if email_status:
+                print(f"   Email Status: {email_status.get('status')}")
+                print(f"   Email Message: {email_status.get('message', 'N/A')}")
+                if email_status.get('email_id'):
+                    print(f"   Email ID: {email_status.get('email_id')}")
+                self.log_result("Email Status Present", True, 200)
+            else:
+                self.log_result("Email Status Present", False, error_msg="No emailStatus in response")
+            
             activation_token = data.get('activationToken')
             if not activation_token:
                 self.log_result("Extract Activation Token", False, error_msg="No token in response")
-                return None
+                return None, None
                 
-            return activation_token
+            return activation_token, email_status
             
         except Exception as e:
             self.log_result("Approve Staff P01", False, error_msg=str(e))
-            return None
+            return None, None
 
     def test_validate_activation_token(self, token):
         """Test token validation"""
