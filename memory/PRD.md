@@ -41,18 +41,25 @@ Importar y hacer realidad el proyecto de GitHub: https://github.com/Ziurivera/Fo
 - **Admin**: Contraseña: Fotosexpress2026$
 - **Cliente de prueba**: Teléfono: 3234764379 (Carla Rivera)
 
-## Implementado (Feb 17, 2026) - Sistema de Reclutamiento
+## Implementado (Feb 17, 2026) - Sistema de Reclutamiento + Resend
 - [x] Email visible en tarjeta de candidato en panel Admin
 - [x] Modal de aprobación con link de activación único
+- [x] **Integración Resend** para envío de emails de activación
+- [x] Modal muestra estado del email (enviado/no enviado con mensaje)
 - [x] Página de activación de cuenta (/activar-cuenta?token=xxx)
 - [x] Flujo profesional tipo Google/Uber: link -> crear contraseña -> cuenta activa
 - [x] Sistema de login para staff con validación de contraseña
 - [x] Sección "Mi Perfil" en Staff Dashboard para cambiar contraseña
 - [x] Backend completo: approve, activate, login, change-password APIs
 
+## Credenciales
+- Admin: Fotosexpress2026$
+- Staff demo: staff@fotosexpress.com / Fotosexpress@
+- Resend API Key: re_dm8FqjWX_AkXSuSwgTtWphifSWSSD9BrU (modo prueba)
+
 ## Backlog / Mejoras Futuras
+- P0: Verificar dominio en Resend para envío a cualquier email
 - P0: Sistema de upload real de fotos (storage)
-- P1: Envío real de emails (SendGrid/Resend) para links de activación
 - P1: Notificaciones WhatsApp automáticas
 - P2: Sistema de pagos para servicios
 - P2: Galería con descarga masiva
