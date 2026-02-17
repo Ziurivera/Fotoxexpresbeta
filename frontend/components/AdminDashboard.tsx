@@ -18,6 +18,11 @@ interface ApprovalModalData {
   nombre: string;
   email: string;
   activationLink?: string;
+  emailStatus?: {
+    status: string;
+    message?: string;
+    email_id?: string;
+  };
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
