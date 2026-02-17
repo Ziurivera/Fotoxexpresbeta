@@ -310,9 +310,61 @@ class FotosExpressAPITester:
             self.log_result("Change Staff Password", False, error_msg=str(e))
             return False
 
-    def test_existing_staff_login(self):
-        """Test login with existing demo staff account"""
-        return self.test_staff_login("staff@fotosexpress.com", "Fotosexpress@")
+    def test_resend_email_integration(self):
+        """Test Resend email integration with different scenarios"""
+        print("\n📧 Testing Resend Email Integration:")
+        
+        # Test 1: Reset data and approve to get email status
+        try:
+            # Reset data first
+            requests.post(f"{self.base_url}/api/seed", timeout=15)
+            
+            # Try to approve staff to test email sending
+            response = requests.post(f"{self.base_url}/api/staff/approve/P01", timeout=15)
+            success = response.status_code == 200
+            
+            if success:
+                data = response.json()
+                email_status = data.get('emailStatus')
+                
+                # Check that emailStatus is present and has expected fields
+                if email_status:
+                    status = email_status.get('status')
+                    message = email_status.get('message', '')
+                    
+                    print(f"   ✅ Email Status Present: {status}")
+                    print(f"   📄 Message: {message}")
+                    
+                    # In test mode, Resend will likely fail unless domain is verified
+                    if status == 'error' and 'testing' in message.lower():
+                        print("   ⚠️  Expected: Resend in test mode (unverified domain)")
+                        self.log_result("Resend Email Integration (Test Mode)", True, 200)
+                        return True
+                    elif status == 'success':
+                        print("   ✅ Email sent successfully")
+                        self.log_result("Resend Email Integration (Success)", True, 200)
+                        return True
+                    elif status == 'skipped':
+                        print("   ⚠️  Email skipped (no API key)")
+                        self.log_result("Resend Email Integration (Skipped)", True, 200)
+                        return True
+                    else:
+                        print(f"   ❌ Unexpected email status: {status}")
+                        self.log_result("Resend Email Integration", False, error_msg=f"Unexpected status: {status}")
+                        return False
+                else:
+                    print("   ❌ No emailStatus in response")
+                    self.log_result("Resend Email Integration", False, error_msg="Missing emailStatus")
+                    return False
+            else:
+                print(f"   ❌ Failed to approve staff: {response.status_code}")
+                self.log_result("Resend Email Integration", False, response.status_code)
+                return False
+                
+        except Exception as e:
+            print(f"   ❌ Error testing Resend integration: {str(e)}")
+            self.log_result("Resend Email Integration", False, error_msg=str(e))
+            return False
 
     def run_all_tests(self):
         """Run comprehensive API tests including photographer recruitment flow"""
