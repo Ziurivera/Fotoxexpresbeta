@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppView, ClientLead, ServiceRequest, PhotographerProfile } from './types';
 import Navbar from './components/Navbar';
 import LandingPage from './components/LandingPage';
@@ -10,6 +10,7 @@ import RequestServicePage from './components/RequestServicePage';
 import ClientRegistrationPage from './components/ClientRegistrationPage';
 import PhotographerAuth from './components/PhotographerAuth';
 import PhotographerDashboard from './components/PhotographerDashboard';
+import AccountActivationPage from './components/AccountActivationPage';
 import Footer from './components/Footer';
 
 export interface ExtendedClientLead extends ClientLead {
@@ -17,8 +18,22 @@ export interface ExtendedClientLead extends ClientLead {
   fotosSubidas?: string[];
 }
 
+// Extended AppView to include account activation
+enum ExtendedAppView {
+  LANDING = 'landing',
+  MEMORIES = 'memories',
+  CLIENT_REGISTRATION = 'client_registration',
+  PORTFOLIO = 'portfolio',
+  ADMIN = 'admin',
+  REQUEST_SERVICE = 'request_service',
+  PHOTOGRAPHER_AUTH = 'photographer_auth',
+  PHOTOGRAPHER_DASHBOARD = 'photographer_dashboard',
+  ACCOUNT_ACTIVATION = 'account_activation'
+}
+
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<AppView>(AppView.LANDING);
+  const [currentView, setCurrentView] = useState<ExtendedAppView | AppView>(AppView.LANDING);
+  const [activationToken, setActivationToken] = useState<string | null>(null);
   
   // Estado Global de Clientes (Entregas de fotos)
   const [clientLeads, setClientLeads] = useState<ExtendedClientLead[]>([
@@ -29,7 +44,7 @@ const App: React.FC = () => {
       instagram: '@carla.riv', 
       aceptaRedes: true, 
       status: 'atendido', 
-      atendidoPorNombre: 'staff@fotosexpress.com',
+      atendidoPorNombre: 'maria@fotosexpress.com',
       fotosSubidas: [
         'https://picsum.photos/id/10/800/1000',
         'https://picsum.photos/id/11/800/1000',
@@ -86,6 +101,35 @@ const App: React.FC = () => {
     }
   ]);
 
+  // Check URL for activation token on load
+  useEffect(() => {
+    const checkActivationUrl = () => {
+      const url = new URL(window.location.href);
+      const pathname = url.pathname;
+      const token = url.searchParams.get('token');
+      
+      if (pathname === '/activar-cuenta' && token) {
+        setActivationToken(token);
+        setCurrentView(ExtendedAppView.ACCOUNT_ACTIVATION);
+      }
+    };
+    
+    checkActivationUrl();
+    
+    // Handle browser back/forward
+    window.addEventListener('popstate', checkActivationUrl);
+    return () => window.removeEventListener('popstate', checkActivationUrl);
+  }, []);
+
+  // Update URL when view changes
+  const handleNavigate = (view: ExtendedAppView | AppView) => {
+    if (view !== ExtendedAppView.ACCOUNT_ACTIVATION) {
+      // Clear URL params when navigating away from activation
+      window.history.pushState({}, '', '/');
+    }
+    setCurrentView(view);
+  };
+
   const updateLead = (updatedLead: ExtendedClientLead) => {
     setClientLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
   };
@@ -100,21 +144,27 @@ const App: React.FC = () => {
 
   const handleStaffAction = (id: string, newStatus: 'aprobado' | 'rechazado') => {
     setStaffApplications(prev => prev.filter(p => p.id !== id));
-    if (newStatus === 'aprobado') {
-      alert('Fotógrafo aprobado y añadido al sistema.');
-    }
   };
 
   const renderView = () => {
+    // Account Activation Page
+    if (currentView === ExtendedAppView.ACCOUNT_ACTIVATION) {
+      return <AccountActivationPage onNavigate={handleNavigate as any} activationToken={activationToken} />;
+    }
+
     switch (currentView) {
-      case AppView.LANDING: return <LandingPage onNavigate={setCurrentView} />;
-      case AppView.MEMORIES: return <MemoriesPage onNavigate={setCurrentView} clientLeads={clientLeads} />;
-      case AppView.CLIENT_REGISTRATION: return <ClientRegistrationPage onNavigate={setCurrentView} />;
-      case AppView.PORTFOLIO: return <PortfolioPage onNavigate={setCurrentView} />;
+      case AppView.LANDING: 
+        return <LandingPage onNavigate={handleNavigate as any} />;
+      case AppView.MEMORIES: 
+        return <MemoriesPage onNavigate={handleNavigate as any} clientLeads={clientLeads} />;
+      case AppView.CLIENT_REGISTRATION: 
+        return <ClientRegistrationPage onNavigate={handleNavigate as any} />;
+      case AppView.PORTFOLIO: 
+        return <PortfolioPage onNavigate={handleNavigate as any} />;
       case AppView.ADMIN: 
         return (
           <AdminDashboard 
-            onNavigate={setCurrentView} 
+            onNavigate={handleNavigate as any} 
             clientLeads={clientLeads} 
             serviceRequests={serviceRequests}
             staffApplications={staffApplications}
@@ -123,22 +173,30 @@ const App: React.FC = () => {
             onStaffAction={handleStaffAction}
           />
         );
-      case AppView.REQUEST_SERVICE: return <RequestServicePage onNavigate={setCurrentView} />;
-      case AppView.PHOTOGRAPHER_AUTH: return <PhotographerAuth onNavigate={setCurrentView} />;
-      case AppView.PHOTOGRAPHER_DASHBOARD: return <PhotographerDashboard onNavigate={setCurrentView} clientLeads={clientLeads} onUpdateLead={updateLead} />;
-      default: return <LandingPage onNavigate={setCurrentView} />;
+      case AppView.REQUEST_SERVICE: 
+        return <RequestServicePage onNavigate={handleNavigate as any} />;
+      case AppView.PHOTOGRAPHER_AUTH: 
+        return <PhotographerAuth onNavigate={handleNavigate as any} />;
+      case AppView.PHOTOGRAPHER_DASHBOARD: 
+        return <PhotographerDashboard onNavigate={handleNavigate as any} clientLeads={clientLeads} onUpdateLead={updateLead} />;
+      default: 
+        return <LandingPage onNavigate={handleNavigate as any} />;
     }
   };
 
+  const showNavAndFooter = currentView !== AppView.ADMIN && 
+                           currentView !== AppView.PHOTOGRAPHER_DASHBOARD && 
+                           currentView !== ExtendedAppView.ACCOUNT_ACTIVATION;
+
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      {currentView !== AppView.ADMIN && currentView !== AppView.PHOTOGRAPHER_DASHBOARD && (
-        <Navbar currentView={currentView} onNavigate={setCurrentView} />
+      {showNavAndFooter && (
+        <Navbar currentView={currentView as AppView} onNavigate={handleNavigate as any} />
       )}
       <main className="transition-all duration-300">
         {renderView()}
       </main>
-      {currentView !== AppView.ADMIN && currentView !== AppView.PHOTOGRAPHER_DASHBOARD && <Footer />}
+      {showNavAndFooter && <Footer />}
     </div>
   );
 };
