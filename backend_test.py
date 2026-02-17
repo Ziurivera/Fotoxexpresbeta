@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 
 class FotosExpressAPITester:
-    def __init__(self, base_url="https://686b811e-993d-4293-bfa6-b6ba1d222226.preview.emergentagent.com"):
+    def __init__(self, base_url="https://github-realizer.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
