@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fotos Express - Capturando Momentos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              background: '#07070F',
+              'background-card': '#0F1122',
+              'background-input': '#131529',
+              primary: '#67B5E6', // Cyan del logo
+              secondary: '#9D7BEA', // Violeta del logo
+              success: '#00BF63',
+              warning: '#FFB84D',
+              error: '#FF0055',
+              'text-primary': '#FFFFFF',
+              'text-secondary': '#A0A0B0',
+              'text-tertiary': '#606070',
+            },
+            fontFamily: {
+              sans: ['Manrope', 'sans-serif'],
+            },
+            screens: {
+              'xs': '400px',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #07070F;
+        color: white;
+        font-family: 'Manrope', sans-serif;
+      }
+      
+      /* Efecto Neón Difuminado para Textos Grandes */
+      .neon-glow-primary {
+        color: #67B5E6;
+        text-shadow: 0 0 20px rgba(103, 181, 230, 0.6), 
+                     0 0 40px rgba(103, 181, 230, 0.3),
+                     0 0 60px rgba(103, 181, 230, 0.1);
+        filter: blur(0.4px);
+      }
+
+      .logo-shimmer {
+        animation: shine 4s infinite ease-in-out;
+      }
+
+      @keyframes shine {
+        0%, 100% { filter: drop-shadow(0 0 5px rgba(103, 181, 230, 0.4)); opacity: 0.8; }
+        50% { filter: drop-shadow(0 0 25px rgba(103, 181, 230, 0.9)); opacity: 1; }
+      }
+
+      .animate-fade-in {
+        animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .animate-spin-slow {
+        animation: spin 3s linear infinite;
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      .bg-gradient-logo {
+        background: linear-gradient(135deg, #67B5E6 0%, #9D7BEA 100%);
+      }
+
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #07070F; }
+      ::-webkit-scrollbar-thumb { background: #1A1A2E; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #67B5E6; }
+    </style>
+
+  <link rel="stylesheet" href="/index.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+        "react/": "https://esm.sh/react@^19.2.4/",
+        "react": "https://esm.sh/react@^19.2.4"
+      }
+    }
+    </script>
+  <script type="module" crossorigin src="/assets/index-Be1kglVO.js"></script>
+</head>
+  <body>
+    <div id="root"></div>
+</body>
+</html>
