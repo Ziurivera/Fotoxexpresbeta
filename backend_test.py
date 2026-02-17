@@ -1,445 +1,328 @@
 #!/usr/bin/env python3
 
 import requests
-import sys
 import json
+import sys
 from datetime import datetime
 
 class FotosExpressAPITester:
-    def __init__(self, base_url="https://github-realizer.preview.emergentagent.com"):
-        self.base_url = base_url
+    def __init__(self):
+        self.base_url = "https://github-realizer.preview.emergentagent.com"
+        self.token = None
         self.tests_run = 0
         self.tests_passed = 0
-        self.errors = []
-
-    def log_result(self, test_name, success, status_code=None, error_msg=None):
-        """Log test result with status info"""
+        self.failed_tests = []
+        
+    def log_test(self, name, success, details=""):
+        """Log test results"""
         self.tests_run += 1
         if success:
             self.tests_passed += 1
-            print(f"✅ {test_name} - Status: {status_code}")
+            print(f"✅ {name} - PASSED")
         else:
-            error_info = f"Status: {status_code}" if status_code else ""
-            if error_msg:
-                error_info += f", Error: {error_msg}"
-            print(f"❌ {test_name} - {error_info}")
-            self.errors.append(f"{test_name}: {error_info}")
-
-    def test_health_endpoint(self):
-        """Test health check endpoint"""
-        try:
-            response = requests.get(f"{self.base_url}/api/health", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Health Check", success, response.status_code)
-            if success:
-                data = response.json()
-                print(f"   Service: {data.get('service', 'Unknown')}")
-            return success
-        except Exception as e:
-            self.log_result("Health Check", False, error_msg=str(e))
-            return False
-
-    def test_get_clients(self):
-        """Test getting clients list"""
-        try:
-            response = requests.get(f"{self.base_url}/api/clients", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Get Clients", success, response.status_code)
-            if success:
-                clients = response.json()
-                print(f"   Found {len(clients)} clients")
-                for client in clients:
-                    print(f"   - {client.get('nombre')} ({client.get('telefono')})")
-            return success
-        except Exception as e:
-            self.log_result("Get Clients", False, error_msg=str(e))
-            return False
-
-    def test_get_client_by_phone(self, phone="3234764379"):
-        """Test getting specific client by phone (Carla Rivera)"""
-        try:
-            response = requests.get(f"{self.base_url}/api/clients/{phone}", timeout=10)
-            success = response.status_code == 200
-            self.log_result(f"Get Client by Phone ({phone})", success, response.status_code)
-            if success:
-                client = response.json()
-                print(f"   Client: {client.get('nombre')} - Status: {client.get('status')}")
-                if client.get('fotosSubidas'):
-                    print(f"   Photos: {len(client.get('fotosSubidas', []))} uploaded")
-            return success
-        except Exception as e:
-            self.log_result(f"Get Client by Phone ({phone})", False, error_msg=str(e))
-            return False
-
-    def test_get_services(self):
-        """Test getting service requests"""
-        try:
-            response = requests.get(f"{self.base_url}/api/services", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Get Services", success, response.status_code)
-            if success:
-                services = response.json()
-                print(f"   Found {len(services)} service requests")
-                for service in services:
-                    print(f"   - {service.get('tipo')} for {service.get('contacto', {}).get('nombre')}")
-            return success
-        except Exception as e:
-            self.log_result("Get Services", False, error_msg=str(e))
-            return False
-
-    def test_get_staff_applications(self):
-        """Test getting staff applications"""
-        try:
-            response = requests.get(f"{self.base_url}/api/staff", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Get Staff Applications", success, response.status_code)
-            if success:
-                staff = response.json()
-                print(f"   Found {len(staff)} staff applications")
-                for app in staff:
-                    print(f"   - {app.get('nombre')} ({app.get('email')})")
-            return success
-        except Exception as e:
-            self.log_result("Get Staff Applications", False, error_msg=str(e))
-            return False
-
-    def test_seed_data(self):
-        """Test seeding initial data"""
-        try:
-            response = requests.post(f"{self.base_url}/api/seed", timeout=15)
-            success = response.status_code == 200
-            self.log_result("Seed Data", success, response.status_code)
-            if success:
-                print("   Initial data seeded successfully")
-            return success
-        except Exception as e:
-            self.log_result("Seed Data", False, error_msg=str(e))
-            return False
-
-    def test_create_client(self):
-        """Test creating a new client"""
-        test_client = {
-            "nombre": "Test Cliente",
-            "telefono": "7879999999",
-            "instagram": "@testclient",
-            "aceptaRedes": True
-        }
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/clients",
-                json=test_client,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            success = response.status_code == 200
-            self.log_result("Create Client", success, response.status_code)
-            if success:
-                client = response.json()
-                print(f"   Created client: {client.get('id')} - {client.get('nombre')}")
-                return client.get('id')
-            return None
-        except Exception as e:
-            self.log_result("Create Client", False, error_msg=str(e))
-            return None
-
-    def test_create_service_request(self):
-        """Test creating a new service request"""
-        test_service = {
-            "tipo": "evento_social",
-            "detalles": {
-                "locacion": "exterior",
-                "descripcion": "Fiesta de cumpleaños",
-                "fechaEvento": "2025-03-15",
-                "horas": 4,
-                "personas": 50
-            },
-            "contacto": {
-                "nombre": "Test Cliente Service",
-                "telefono": "787-888-9999",
-                "email": "test@service.com"
-            }
-        }
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/services",
-                json=test_service,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            success = response.status_code == 200
-            self.log_result("Create Service Request", success, response.status_code)
-            if success:
-                service = response.json()
-                print(f"   Created service: {service.get('id')} - {service.get('tipo')}")
-                return service.get('id')
-            return None
-        except Exception as e:
-            self.log_result("Create Service Request", False, error_msg=str(e))
-            return None
-
-    def test_staff_approve_and_activation_flow(self):
-        """Test complete staff approval and activation flow with Resend email status"""
-        # Step 1: Approve staff member P01 (Javier Rodriguez)
-        try:
-            response = requests.post(f"{self.base_url}/api/staff/approve/P01", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Approve Staff P01", success, response.status_code)
+            print(f"❌ {name} - FAILED: {details}")
+            self.failed_tests.append(f"{name}: {details}")
             
-            if not success:
-                return None, None
+    def run_test(self, name, method, endpoint, expected_status, data=None, auth_header=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/api{endpoint}"
+        headers = {'Content-Type': 'application/json'}
+        if auth_header:
+            headers.update(auth_header)
+            
+        try:
+            print(f"\n🔍 Testing {name}...")
+            
+            if method == 'GET':
+                response = requests.get(url, headers=headers, timeout=30)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers, timeout=30)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, timeout=30)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers, timeout=30)
                 
-            data = response.json()
-            print(f"   Approved: {data.get('nombre')} ({data.get('email')})")
-            print(f"   Activation Link: {data.get('activationLink')}")
+            success = response.status_code == expected_status
             
-            # Test new Resend email status feature
-            email_status = data.get('emailStatus')
-            if email_status:
-                print(f"   Email Status: {email_status.get('status')}")
-                print(f"   Email Message: {email_status.get('message', 'N/A')}")
-                if email_status.get('email_id'):
-                    print(f"   Email ID: {email_status.get('email_id')}")
-                self.log_result("Email Status Present", True, 200)
+            if success:
+                self.log_test(name, True)
+                try:
+                    return True, response.json() if response.text else {}
+                except:
+                    return True, {}
             else:
-                self.log_result("Email Status Present", False, error_msg="No emailStatus in response")
-            
-            activation_token = data.get('activationToken')
-            if not activation_token:
-                self.log_result("Extract Activation Token", False, error_msg="No token in response")
-                return None, None
+                error_msg = f"Expected {expected_status}, got {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg += f" - {error_data}"
+                except:
+                    error_msg += f" - Response: {response.text[:200]}"
+                    
+                self.log_test(name, False, error_msg)
+                return False, {}
                 
-            return activation_token, email_status
-            
         except Exception as e:
-            self.log_result("Approve Staff P01", False, error_msg=str(e))
-            return None, None
-
-    def test_validate_activation_token(self, token):
-        """Test token validation"""
-        try:
-            response = requests.get(f"{self.base_url}/api/staff/validate-token?token={token}", timeout=10)
-            success = response.status_code == 200
-            self.log_result("Validate Activation Token", success, response.status_code)
+            self.log_test(name, False, str(e))
+            return False, {}
+    
+    def test_health_check(self):
+        """Test API health endpoint"""
+        return self.run_test("Health Check", "GET", "/health", 200)
+    
+    def test_zones_api(self):
+        """Test zones CRUD operations"""
+        print("\n" + "="*50)
+        print("TESTING ZONES API")
+        print("="*50)
+        
+        # Get zones
+        success, zones = self.run_test("Get Zones", "GET", "/zones", 200)
+        
+        # Get active zones
+        self.run_test("Get Active Zones", "GET", "/zones/active", 200)
+        
+        return success and len(zones) > 0
+    
+    def test_businesses_api(self):
+        """Test businesses CRUD operations"""
+        print("\n" + "="*50)
+        print("TESTING BUSINESSES API")
+        print("="*50)
+        
+        # Get businesses
+        success, businesses = self.run_test("Get Businesses", "GET", "/businesses", 200)
+        
+        # Get active businesses
+        self.run_test("Get Active Businesses", "GET", "/businesses/active", 200)
+        
+        return success and len(businesses) > 0
+    
+    def test_activities_api(self):
+        """Test activities CRUD operations"""
+        print("\n" + "="*50)
+        print("TESTING ACTIVITIES API")
+        print("="*50)
+        
+        # Get activities
+        success, activities = self.run_test("Get Activities", "GET", "/activities", 200)
+        
+        # Get active activities
+        self.run_test("Get Active Activities", "GET", "/activities/active", 200)
+        
+        if activities and len(activities) > 0:
+            # Test activities by business
+            business_id = activities[0].get('negocioId')
+            if business_id:
+                self.run_test("Get Activities by Business", "GET", f"/activities/business/{business_id}", 200)
+        
+        return success and len(activities) > 0
+    
+    def test_ambulant_clients_api(self):
+        """Test ambulant clients API"""
+        print("\n" + "="*50)
+        print("TESTING AMBULANT CLIENTS API")
+        print("="*50)
+        
+        # Get ambulant clients
+        success, clients = self.run_test("Get Ambulant Clients", "GET", "/ambulant-clients", 200)
+        
+        if clients and len(clients) > 0:
+            client = clients[0]
+            zone_id = client.get('zonaId')
+            phone = client.get('telefono')
             
-            if success:
-                data = response.json()
-                print(f"   Valid token for: {data.get('nombre')} ({data.get('email')})")
-                return True
-            return False
+            if zone_id:
+                self.run_test("Get Ambulant Clients by Zone", "GET", f"/ambulant-clients/zone/{zone_id}", 200)
             
-        except Exception as e:
-            self.log_result("Validate Activation Token", False, error_msg=str(e))
-            return False
-
-    def test_activate_staff_account(self, token):
-        """Test account activation with password"""
-        activation_data = {
-            "token": token,
-            "password": "TestPassword123!"
-        }
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/staff/activate",
-                json=activation_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            success = response.status_code == 200
-            self.log_result("Activate Staff Account", success, response.status_code)
+            if phone:
+                self.run_test("Get Ambulant Client by Phone", "GET", f"/ambulant-clients/phone/{phone}", 200)
+        
+        return success
+    
+    def test_activity_clients_api(self):
+        """Test activity clients API"""
+        print("\n" + "="*50)
+        print("TESTING ACTIVITY CLIENTS API")
+        print("="*50)
+        
+        # Get activity clients
+        success, clients = self.run_test("Get Activity Clients", "GET", "/activity-clients", 200)
+        
+        if clients and len(clients) > 0:
+            client = clients[0]
+            activity_id = client.get('actividadId')
+            phone = client.get('telefono')
+            negocio_id = client.get('negocioId')
             
-            if success:
-                data = response.json()
-                print(f"   Account activated for: {data.get('nombre')} ({data.get('email')})")
-                return data.get('email')
-            return None
+            if activity_id:
+                self.run_test("Get Activity Clients by Activity", "GET", f"/activity-clients/activity/{activity_id}", 200)
             
-        except Exception as e:
-            self.log_result("Activate Staff Account", False, error_msg=str(e))
-            return None
-
-    def test_staff_login(self, email, password):
-        """Test staff member login"""
+            if phone:
+                endpoint = f"/activity-clients/phone/{phone}"
+                if negocio_id:
+                    endpoint += f"?negocioId={negocio_id}"
+                if activity_id:
+                    endpoint += f"&actividadId={activity_id}" if "?" in endpoint else f"?actividadId={activity_id}"
+                self.run_test("Get Activity Client by Phone", "GET", endpoint, 200)
+        
+        return success
+    
+    def test_staff_users_api(self):
+        """Test staff users API"""
+        print("\n" + "="*50)
+        print("TESTING STAFF USERS API")
+        print("="*50)
+        
+        # Get staff users
+        success, users = self.run_test("Get Staff Users", "GET", "/staff/users", 200)
+        
+        # Test specific user lookup (ziu@fotosexpresspr.com should exist)
+        self.run_test("Get Staff User by Email", "GET", "/staff/user/ziu@fotosexpresspr.com", 200)
+        
+        return success and len(users) > 0
+    
+    def test_staff_login(self):
+        """Test staff login functionality"""
+        print("\n" + "="*50)
+        print("TESTING STAFF LOGIN")
+        print("="*50)
+        
+        # Test valid login
         login_data = {
-            "email": email,
-            "password": password
+            "email": "ziu@fotosexpresspr.com",
+            "password": "Fotosexpresspr01@"
         }
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/staff/login",
-                json=login_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            success = response.status_code == 200
-            self.log_result(f"Staff Login ({email})", success, response.status_code)
-            
-            if success:
-                data = response.json()
-                user = data.get('user', {})
-                print(f"   Login successful: {user.get('nombre')} (ID: {user.get('id')})")
-                return True
-            return False
-            
-        except Exception as e:
-            self.log_result(f"Staff Login ({email})", False, error_msg=str(e))
-            return False
-
-    def test_staff_change_password(self, email, current_password, new_password):
-        """Test changing staff password"""
-        password_data = {
-            "email": email,
-            "currentPassword": current_password,
-            "newPassword": new_password
-        }
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/staff/change-password",
-                json=password_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=10
-            )
-            success = response.status_code == 200
-            self.log_result("Change Staff Password", success, response.status_code)
-            
-            if success:
-                print("   Password changed successfully")
-                return True
-            return False
-            
-        except Exception as e:
-            self.log_result("Change Staff Password", False, error_msg=str(e))
-            return False
-
-    def test_resend_email_integration(self):
-        """Test Resend email integration with different scenarios"""
-        print("\n📧 Testing Resend Email Integration:")
+        success, response = self.run_test("Staff Login (Valid)", "POST", "/staff/login", 200, login_data)
         
-        # Test 1: Reset data and approve to get email status
-        try:
-            # Reset data first
-            requests.post(f"{self.base_url}/api/seed", timeout=15)
+        if success and response:
+            user = response.get('user', {})
+            print(f"   Logged in as: {user.get('nombre', 'Unknown')}")
+            print(f"   Assigned zones: {len(user.get('zonasAsignadas', []))}")
+            print(f"   Assigned activities: {len(user.get('actividadesAsignadas', []))}")
             
-            # Try to approve staff to test email sending
-            response = requests.post(f"{self.base_url}/api/staff/approve/P01", timeout=15)
-            success = response.status_code == 200
-            
-            if success:
-                data = response.json()
-                email_status = data.get('emailStatus')
-                
-                # Check that emailStatus is present and has expected fields
-                if email_status:
-                    status = email_status.get('status')
-                    message = email_status.get('message', '')
-                    
-                    print(f"   ✅ Email Status Present: {status}")
-                    print(f"   📄 Message: {message}")
-                    
-                    # In test mode, Resend will likely fail unless domain is verified
-                    if status == 'error' and 'testing' in message.lower():
-                        print("   ⚠️  Expected: Resend in test mode (unverified domain)")
-                        self.log_result("Resend Email Integration (Test Mode)", True, 200)
-                        return True
-                    elif status == 'success':
-                        print("   ✅ Email sent successfully")
-                        self.log_result("Resend Email Integration (Success)", True, 200)
-                        return True
-                    elif status == 'skipped':
-                        print("   ⚠️  Email skipped (no API key)")
-                        self.log_result("Resend Email Integration (Skipped)", True, 200)
-                        return True
-                    else:
-                        print(f"   ❌ Unexpected email status: {status}")
-                        self.log_result("Resend Email Integration", False, error_msg=f"Unexpected status: {status}")
-                        return False
-                else:
-                    print("   ❌ No emailStatus in response")
-                    self.log_result("Resend Email Integration", False, error_msg="Missing emailStatus")
-                    return False
-            else:
-                print(f"   ❌ Failed to approve staff: {response.status_code}")
-                self.log_result("Resend Email Integration", False, response.status_code)
-                return False
-                
-        except Exception as e:
-            print(f"   ❌ Error testing Resend integration: {str(e)}")
-            self.log_result("Resend Email Integration", False, error_msg=str(e))
+            # Store user ID for staff-specific tests
+            self.staff_user_id = user.get('id')
+        
+        # Test invalid login
+        invalid_login = {
+            "email": "ziu@fotosexpresspr.com",
+            "password": "wrongpassword"
+        }
+        self.run_test("Staff Login (Invalid)", "POST", "/staff/login", 401, invalid_login)
+        
+        # Test demo staff login
+        demo_login = {
+            "email": "staff@fotosexpress.com",
+            "password": "Fotosexpress@"
+        }
+        self.run_test("Demo Staff Login", "POST", "/staff/login", 200, demo_login)
+        
+        return success
+    
+    def test_staff_specific_clients(self):
+        """Test staff can only see their assigned clients"""
+        print("\n" + "="*50)
+        print("TESTING STAFF RESTRICTED ACCESS")
+        print("="*50)
+        
+        if not hasattr(self, 'staff_user_id') or not self.staff_user_id:
+            print("⚠️  Skipping staff-specific tests - no valid staff user ID")
             return False
-
-    def test_existing_staff_login(self):
-        """Test login with existing demo staff account"""
-        return self.test_staff_login("staff@fotosexpress.com", "Fotosexpress@")
-
+        
+        # Test ambulant clients for staff
+        success1, ambulant = self.run_test(
+            "Get Staff Ambulant Clients", 
+            "GET", 
+            f"/ambulant-clients/staff/{self.staff_user_id}", 
+            200
+        )
+        
+        # Test activity clients for staff  
+        success2, activity = self.run_test(
+            "Get Staff Activity Clients",
+            "GET", 
+            f"/activity-clients/staff/{self.staff_user_id}",
+            200
+        )
+        
+        if ambulant:
+            print(f"   Staff has {len(ambulant)} ambulant clients")
+        if activity:
+            print(f"   Staff has {len(activity)} activity clients")
+        
+        return success1 and success2
+    
+    def test_services_api(self):
+        """Test service requests API"""
+        print("\n" + "="*50)
+        print("TESTING SERVICE REQUESTS API")
+        print("="*50)
+        
+        success, services = self.run_test("Get Service Requests", "GET", "/services", 200)
+        return success
+    
+    def test_staff_applications_api(self):
+        """Test staff applications API"""
+        print("\n" + "="*50)
+        print("TESTING STAFF APPLICATIONS API")
+        print("="*50)
+        
+        success, applications = self.run_test("Get Staff Applications", "GET", "/staff", 200)
+        return success
+    
     def run_all_tests(self):
-        """Run comprehensive API tests including photographer recruitment flow"""
-        print("🧪 Starting Fotos Express Photographer Recruitment API Tests")
-        print("=" * 60)
+        """Run all API tests"""
+        print("🚀 STARTING FOTOS EXPRESS API TESTS")
+        print("="*60)
         
-        # Basic health and connectivity
-        if not self.test_health_endpoint():
-            print("❌ Health check failed - stopping tests")
+        try:
+            # Health check first
+            if not self.test_health_check()[0]:
+                print("\n❌ API is not healthy, stopping tests")
+                return False
+            
+            # Core API tests
+            self.test_zones_api()
+            self.test_businesses_api()
+            self.test_activities_api()
+            self.test_ambulant_clients_api()
+            self.test_activity_clients_api()
+            self.test_services_api()
+            self.test_staff_applications_api()
+            
+            # Staff-specific tests
+            self.test_staff_users_api()
+            if self.test_staff_login():
+                self.test_staff_specific_clients()
+            
+        except Exception as e:
+            print(f"\n💥 Test suite error: {str(e)}")
             return False
-
-        # Seed initial data (resets DB with P01 candidate)
-        self.test_seed_data()
         
-        # Test basic read operations
-        self.test_get_clients()
-        self.test_get_client_by_phone("3234764379")  # Carla Rivera test phone
-        self.test_get_services()
-        self.test_get_staff_applications()
-        
-        # Test existing staff login (demo account)
-        print("\n📋 Testing Existing Staff Login:")
-        self.test_existing_staff_login()
-        
-        # Test Resend email integration specifically
-        self.test_resend_email_integration()
-        
-        # Test complete photographer recruitment flow
-        print("\n🎯 Testing Photographer Recruitment Flow:")
-        
-        # Step 1: Approve staff candidate P01 (Javier Rodriguez)
-        activation_token, email_status = self.test_staff_approve_and_activation_flow()
-        
-        if activation_token:
-            # Step 2: Validate activation token
-            if self.test_validate_activation_token(activation_token):
-                # Step 3: Activate account with password
-                email = self.test_activate_staff_account(activation_token)
-                
-                if email:
-                    # Step 4: Test login with new account
-                    if self.test_staff_login(email, "TestPassword123!"):
-                        # Step 5: Test password change functionality
-                        self.test_staff_change_password(email, "TestPassword123!", "NewPassword456!")
-                        
-                        # Step 6: Test login with new password
-                        self.test_staff_login(email, "NewPassword456!")
-        
-        # Test create operations
-        print("\n📝 Testing Create Operations:")
-        new_client_id = self.test_create_client()
-        new_service_id = self.test_create_service_request()
-        
-        # Print summary
-        print("=" * 60)
-        print(f"📊 Test Summary: {self.tests_passed}/{self.tests_run} tests passed")
-        
-        if self.errors:
-            print("❌ Errors found:")
-            for error in self.errors:
-                print(f"   - {error}")
+        # Results
+        print("\n" + "="*60)
+        print("📊 TEST RESULTS")
+        print("="*60)
         
         success_rate = (self.tests_passed / self.tests_run * 100) if self.tests_run > 0 else 0
-        print(f"📈 Success Rate: {success_rate:.1f}%")
+        print(f"Tests passed: {self.tests_passed}/{self.tests_run} ({success_rate:.1f}%)")
         
-        return success_rate >= 70  # Lowered threshold due to more complex flow
+        if self.failed_tests:
+            print(f"\n❌ Failed tests:")
+            for failure in self.failed_tests:
+                print(f"  - {failure}")
+        else:
+            print("\n✅ All tests passed!")
+        
+        return self.tests_passed == self.tests_run
 
 def main():
+    """Main test execution"""
     tester = FotosExpressAPITester()
     success = tester.run_all_tests()
-    return 0 if success else 1
+    
+    # Exit with appropriate code
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
